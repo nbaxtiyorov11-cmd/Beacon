@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "885563935697",
+    "project_id": "beacon-2f8e2",
+    "storage_bucket": "beacon-2f8e2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:885563935697:android:fec1e5fc806bafb33faef0",
+        "android_client_info": {
+          "package_name": "com.example.beacon"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "885563935697-v48qf7jtbh87ql290kshg4ribaug9s3b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.beacon",
+            "certificate_hash": "2f53c0a3ceabe84405be780739d6d92393bed605"
+          }
+        },
+        {
+          "client_id": "885563935697-lqeae3u5u1rbq8aq1frt4folcs0l1p0t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEjLwhFmK9lc5XyFdxWObafG0j46xxYqs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "885563935697-lqeae3u5u1rbq8aq1frt4folcs0l1p0t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

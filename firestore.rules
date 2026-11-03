@@ -1,0 +1,227 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      match /deviceTokens/{tokenId} {
+        allow get, list, delete: if request.auth != null
+          && request.auth.uid == userId;
+        allow create, update: if request.auth != null
+          && request.auth.uid == userId
+          && request.resource.data.token == tokenId;
+      }
+
+      match /safePlaces/{placeId} {
+        allow get, list, create, update, delete: if request.auth != null
+          && request.auth.uid == userId;
+      }
+    }
+
+    match /publicProfiles/{email} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create, update: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == email;
+      allow delete: if request.auth != null
+        && resource.data.uid == request.auth.uid;
+    }
+
+    match /familyInvitations/{invitationId} {
+      allow get: if request.auth != null
+        && (!exists(/databases/$(database)/documents/familyInvitations/$(invitationId))
+          || resource.data.fromUid == request.auth.uid
+          || resource.data.toUid == request.auth.uid);
+      allow list: if request.auth != null
+        && (resource.data.fromUid == request.auth.uid
+          || resource.data.toUid == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid != request.auth.uid
+        && request.resource.data.status == 'pending'
+        && exists(/databases/$(database)/documents/publicProfiles/$(request.resource.data.toEmail))
+        && get(/databases/$(database)/documents/publicProfiles/$(request.resource.data.toEmail)).data.uid
+          == request.resource.data.toUid
+        && get(/databases/$(database)/documents/publicProfiles/$(request.resource.data.toEmail)).data.email
+          == request.resource.data.toEmail;
+      allow update: if request.auth != null
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && (
+          (resource.data.toUid == request.auth.uid
+            && resource.data.status == 'pending'
+            && request.resource.data.status in ['accepted', 'rejected']
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'respondedAt']))
+        );
+      allow delete: if request.auth != null
+        && request.auth.uid in [resource.data.fromUid, resource.data.toUid]
+        && resource.data.status in ['accepted', 'rejected'];
+    }
+
+    match /familyConnections/{connectionId} {
+      function ownMapEntryOnly(field) {
+        let oldValue = resource.data.get(field, {});
+        let newValue = request.resource.data.get(field, {});
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([field])
+          && newValue is map
+          && newValue.diff(oldValue).affectedKeys().hasOnly([request.auth.uid]);
+      }
+
+      function validLocationUpdate() {
+        let locations = request.resource.data.get('locations', {});
+        return ownMapEntryOnly('locations')
+          && (!locations.keys().hasAny([request.auth.uid])
+            || (locations[request.auth.uid].latitude is number
+              && locations[request.auth.uid].latitude >= -90
+              && locations[request.auth.uid].latitude <= 90
+              && locations[request.auth.uid].longitude is number
+              && locations[request.auth.uid].longitude >= -180
+              && locations[request.auth.uid].longitude <= 180
+              && locations[request.auth.uid].updatedAt is timestamp));
+      }
+
+      function validAlertUpdate() {
+        let alerts = request.resource.data.get('alerts', {});
+        return ownMapEntryOnly('alerts')
+          && (!alerts.keys().hasAny([request.auth.uid])
+            || (alerts[request.auth.uid].active == true
+              && alerts[request.auth.uid].startedAt is timestamp
+              && alerts[request.auth.uid].updatedAt is timestamp
+              && alerts[request.auth.uid].expiresAt is timestamp
+              && ((alerts[request.auth.uid].latitude == null
+                  && alerts[request.auth.uid].longitude == null)
+                || (alerts[request.auth.uid].latitude is number
+                  && alerts[request.auth.uid].latitude >= -90
+                  && alerts[request.auth.uid].latitude <= 90
+                  && alerts[request.auth.uid].longitude is number
+                  && alerts[request.auth.uid].longitude >= -180
+                  && alerts[request.auth.uid].longitude <= 180))));
+      }
+
+      allow get: if request.auth != null
+        && (!exists(/databases/$(database)/documents/familyConnections/$(connectionId))
+          || request.auth.uid in resource.data.memberUids);
+      allow list: if request.auth != null
+        && request.auth.uid in resource.data.memberUids;
+      allow create: if request.auth != null
+        && request.resource.data.memberUids.size() == 2
+        && request.auth.uid in request.resource.data.memberUids
+        && getAfter(/databases/$(database)/documents/familyInvitations/$(request.resource.data.invitationId)).data.status
+          == 'accepted'
+        && getAfter(/databases/$(database)/documents/familyInvitations/$(request.resource.data.invitationId)).data.toUid
+          == request.auth.uid
+        && request.resource.data.members.size() == 2
+        && request.resource.data.memberUids.hasAll([
+          getAfter(/databases/$(database)/documents/familyInvitations/$(request.resource.data.invitationId)).data.fromUid,
+          request.auth.uid
+        ])
+        && request.resource.data.members[0].uid
+          == getAfter(/databases/$(database)/documents/familyInvitations/$(request.resource.data.invitationId)).data.fromUid
+        && request.resource.data.members[0].displayName
+          == getAfter(/databases/$(database)/documents/familyInvitations/$(request.resource.data.invitationId)).data.fromName
+        && request.resource.data.members[0].email
+          == getAfter(/databases/$(database)/documents/familyInvitations/$(request.resource.data.invitationId)).data.fromEmail
+        && request.resource.data.members[1].uid == request.auth.uid
+        && request.resource.data.members[1].displayName
+          == getAfter(/databases/$(database)/documents/familyInvitations/$(request.resource.data.invitationId)).data.toName
+        && request.resource.data.members[1].email
+          == getAfter(/databases/$(database)/documents/familyInvitations/$(request.resource.data.invitationId)).data.toEmail
+        && request.resource.data.locations is map
+        && request.resource.data.locations.keys().size() == 0
+        && request.resource.data.alerts is map
+        && request.resource.data.alerts.keys().size() == 0;
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.memberUids
+        && (validLocationUpdate() || validAlertUpdate());
+      allow delete: if request.auth != null
+        && request.auth.uid in resource.data.memberUids;
+    }
+
+    match /activityStats/{userId} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    match /chatThreads/{chatId} {
+      allow get: if request.auth != null
+        && (!exists(/databases/$(database)/documents/chatThreads/$(chatId))
+          || request.auth.uid in resource.data.participantUids);
+      allow list: if request.auth != null
+        && request.auth.uid in resource.data.participantUids;
+      allow create: if request.auth != null
+        && request.resource.data.participantUids.size() == 2
+        && request.auth.uid in request.resource.data.participantUids
+        && request.resource.data.participantProfiles.keys().hasAll(
+          request.resource.data.participantUids
+        )
+        && request.resource.data.participantProfiles[
+          request.resource.data.participantUids[0]
+        ].uid == request.resource.data.participantUids[0]
+        && request.resource.data.participantProfiles[
+          request.resource.data.participantUids[1]
+        ].uid == request.resource.data.participantUids[1]
+        && exists(/databases/$(database)/documents/publicProfiles/$(request.resource.data.participantProfiles[request.resource.data.participantUids[0]].email))
+        && get(/databases/$(database)/documents/publicProfiles/$(request.resource.data.participantProfiles[request.resource.data.participantUids[0]].email)).data.uid
+          == request.resource.data.participantUids[0]
+        && exists(/databases/$(database)/documents/publicProfiles/$(request.resource.data.participantProfiles[request.resource.data.participantUids[1]].email))
+        && get(/databases/$(database)/documents/publicProfiles/$(request.resource.data.participantProfiles[request.resource.data.participantUids[1]].email)).data.uid
+          == request.resource.data.participantUids[1];
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.participantUids
+        && request.resource.data.participantUids == resource.data.participantUids
+        && request.resource.data.participantProfiles == resource.data.participantProfiles
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage', 'lastSenderUid', 'lastMessageAt', 'lastReadAt'
+        ])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'lastReadAt'
+        ]) || request.resource.data.lastReadAt.diff(resource.data.lastReadAt)
+          .affectedKeys().hasOnly([request.auth.uid]))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'lastMessage', 'lastSenderUid', 'lastMessageAt'
+        ]) || request.resource.data.lastSenderUid == request.auth.uid);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow get, list: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/chatThreads/$(chatId)).data.participantUids;
+        allow create: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/chatThreads/$(chatId)).data.participantUids
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 4000
+          && request.resource.data.reactions is map
+          && request.resource.data.reactions.keys().size() == 0
+          && request.resource.data.keys().hasAll([
+            'senderUid', 'text', 'createdAt', 'reactions'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'senderUid', 'text', 'createdAt', 'reactions',
+            'replyToMessageId', 'replyToText', 'replyToSenderUid'
+          ]);
+        allow update: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/chatThreads/$(chatId)).data.participantUids
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          && request.resource.data.reactions.diff(resource.data.reactions)
+            .affectedKeys().hasOnly([request.auth.uid]);
+        allow delete: if false;
+      }
+    }
+
+    match /trips/{tripId} {
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid;
+      allow read: if request.auth != null
+        && resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && resource.data.uid == request.auth.uid;
+    }
+  }
+}

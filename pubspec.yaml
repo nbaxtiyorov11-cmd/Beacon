@@ -1,0 +1,42 @@
+name: beacon
+description: AI-powered personal mobility & family safety platform.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # State management
+  provider: ^6.1.2
+
+  # Auth (wire up real keys before release)
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.6.0
+  google_sign_in: ^6.2.1
+
+  # Location & maps
+  geolocator: ^13.0.1
+  # Background GPS tracking engine
+  flutter_foreground_task: ^8.17.0
+  permission_handler: ^11.3.1
+
+  # Local persistence for offline mode
+  shared_preferences: ^2.3.2
+  firebase_messaging: 15.2.10
+  url_launcher: ^6.3.3
+  flutter_map: 6.2.1
+  latlong2: 0.9.1
+  geolocator_android: 4.6.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
