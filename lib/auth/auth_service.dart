@@ -31,7 +31,6 @@ abstract interface class AuthService {
   Future<void> updateDisplayName(String displayName);
   Future<void> sendEmailVerification();
   Future<AuthUser?> reloadCurrentUser();
-  Future<void> deleteAccount();
   Future<void> signOut();
 }
 
@@ -132,12 +131,6 @@ class FirebaseAuthService implements AuthService {
     final user = _requireUser();
     await _perform(user.reload);
     return currentUser;
-  }
-
-  @override
-  Future<void> deleteAccount() {
-    final user = _requireUser();
-    return _perform(user.delete);
   }
 
   @override

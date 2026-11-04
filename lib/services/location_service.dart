@@ -21,31 +21,63 @@ class LocationService {
   Position? _lastKnownPosition;
   Position? _previousTrackedPosition;
   DateTime? _trackingStartedAt;
+  DateTime? _trackingResumedAt;
+  Duration _trackedDuration = Duration.zero;
   double _trackedDistanceMeters = 0;
+  bool _nextPositionStartsSegment = true;
+  final Set<int> _trackingSegmentStartIndices = <int>{};
 
   bool get trackingEnabled => _trackingEnabled;
+  bool get hasActiveTrip => _trackingStartedAt != null;
   Position? get lastKnownPosition => _lastKnownPosition;
   DateTime? get trackingStartedAt => _trackingStartedAt;
+  Duration get trackingDuration {
+    final currentSegment = _trackingEnabled && _trackingResumedAt != null
+        ? DateTime.now().difference(_trackingResumedAt!)
+        : Duration.zero;
+    return _trackedDuration + currentSegment;
+  }
+
   double get trackedDistanceMeters => _trackedDistanceMeters;
   List<Position> get trackedPositions => List.unmodifiable(_trackedPositions);
+  List<int> get trackingSegmentStartIndices =>
+      List.unmodifiable(_trackingSegmentStartIndices);
   Stream<Position> get positionStream => _positionController.stream;
   final List<Position> _trackedPositions = <Position>[];
 
   Future<bool> startTracking() async {
+    if (_trackingEnabled) return true;
+    if (hasActiveTrip) return resumeTracking();
     if (!await _hasLocationPermission()) return false;
 
-    _trackingEnabled = true;
     _trackedPositions.clear();
+    _trackingSegmentStartIndices.clear();
     _previousTrackedPosition = null;
+    _nextPositionStartsSegment = true;
     _trackedDistanceMeters = 0;
     _trackingStartedAt = DateTime.now();
+    _trackedDuration = Duration.zero;
+    _startPositionUpdates();
+    return true;
+  }
 
-    _subscription ??= _geolocator
+  Future<bool> resumeTracking() async {
+    if (_trackingEnabled) return true;
+    if (!hasActiveTrip) return startTracking();
+    if (!await _hasLocationPermission()) return false;
+
+    _startPositionUpdates();
+    return true;
+  }
+
+  void _startPositionUpdates() {
+    _trackingEnabled = true;
+    _trackingResumedAt = DateTime.now();
+    _subscription =
+        _geolocator
         .getPositionStream(locationSettings: _trackingLocationSettings)
         .listen(_recordPosition);
-
     unawaited(_requestInitialPosition());
-    return true;
   }
 
   Future<void> _requestInitialPosition() async {
@@ -113,12 +145,20 @@ class LocationService {
 
   void _recordPosition(Position position) {
     if (!_trackingEnabled || !_isUsablePosition(position)) return;
-    final previous = _previousTrackedPosition;
-    if (previous != null && !position.timestamp.isAfter(previous.timestamp)) {
+    final lastPosition =
+        _trackedPositions.isEmpty ? null : _trackedPositions.last;
+    if (lastPosition != null &&
+        !position.timestamp.isAfter(lastPosition.timestamp)) {
       return;
     }
-    if (previous != null &&
-        TripService.samplesAreContinuous(previous, position)) {
+
+    final previous = _previousTrackedPosition;
+    final startsSegment = _nextPositionStartsSegment ||
+        previous == null ||
+        !TripService.samplesAreContinuous(previous, position);
+    if (startsSegment) {
+      _trackingSegmentStartIndices.add(_trackedPositions.length);
+    } else {
       _trackedDistanceMeters += Geolocator.distanceBetween(
         previous.latitude,
         previous.longitude,
@@ -128,6 +168,7 @@ class LocationService {
     }
     _trackedPositions.add(position);
     _previousTrackedPosition = position;
+    _nextPositionStartsSegment = false;
     _lastKnownPosition = position;
     _positionController.add(position);
   }
@@ -142,11 +183,28 @@ class LocationService {
         age >= const Duration(seconds: -5);
   }
 
-  Future<void> stopTracking() async {
+  Future<void> pauseTracking() async {
+    if (_trackingEnabled && _trackingResumedAt != null) {
+      _trackedDuration += DateTime.now().difference(_trackingResumedAt!);
+    }
+    _trackingResumedAt = null;
     _trackingEnabled = false;
+    _previousTrackedPosition = null;
+    _nextPositionStartsSegment = true;
     final subscription = _subscription;
     _subscription = null;
     await subscription?.cancel();
+  }
+
+  Future<void> stopTracking() async {
+    await pauseTracking();
+    _trackedPositions.clear();
+    _trackingSegmentStartIndices.clear();
+    _previousTrackedPosition = null;
+    _nextPositionStartsSegment = true;
+    _trackingStartedAt = null;
+    _trackedDuration = Duration.zero;
+    _trackedDistanceMeters = 0;
   }
 
   String get lastLocationLabel {

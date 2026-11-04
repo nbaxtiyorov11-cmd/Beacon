@@ -40,19 +40,12 @@ abstract final class BeaconTheme {
       backgroundColor: BeaconColors.ink,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      indicatorColor: BeaconColors.lime,
-      indicatorShape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      indicatorColor: Colors.transparent,
       height: 76,
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      iconTheme: WidgetStateProperty.resolveWith<IconThemeData>((states) {
-        final selected = states.contains(WidgetState.selected);
-        return IconThemeData(
-          color: selected ? BeaconColors.ink : Colors.white,
-          size: 22,
-        );
-      }),
+      iconTheme: const WidgetStatePropertyAll(
+        IconThemeData(color: Colors.white, size: 22),
+      ),
       labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((states) {
         final selected = states.contains(WidgetState.selected);
         return TextStyle(

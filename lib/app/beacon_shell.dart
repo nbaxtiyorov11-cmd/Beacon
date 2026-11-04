@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../auth/auth_service.dart';
 import '../pages/activity_page.dart';
+import '../pages/chats_page.dart';
 import '../pages/emergency_page.dart';
 import '../pages/family_page.dart';
 import '../pages/home_page.dart';
@@ -42,6 +43,7 @@ class BeaconShell extends StatefulWidget {
 class _BeaconShellState extends State<BeaconShell> {
   int _selectedIndex = 0;
   bool _trackingEnabled = false;
+  bool _trackingSessionActive = false;
   UserSettings _userSettings = const UserSettings();
   StreamSubscription<List<TripEntry>>? _tripSubscription;
   StreamSubscription<List<FamilyInvitation>>? _invitationSubscription;
@@ -65,6 +67,7 @@ class _BeaconShellState extends State<BeaconShell> {
   void initState() {
     super.initState();
     _trackingEnabled = widget.locationService.trackingEnabled;
+    _trackingSessionActive = widget.locationService.hasActiveTrip;
     _loadUserData();
     _watchTrips();
     _watchIncomingInvitations();
@@ -308,7 +311,9 @@ class _BeaconShellState extends State<BeaconShell> {
     final messenger = ScaffoldMessenger.maybeOf(context);
 
     if (enabled) {
-      final started = await widget.locationService.startTracking();
+      final started = _trackingSessionActive
+          ? await widget.locationService.resumeTracking()
+          : await widget.locationService.startTracking();
       if (!started && mounted) {
         messenger?.showSnackBar(
           const SnackBar(
@@ -317,35 +322,61 @@ class _BeaconShellState extends State<BeaconShell> {
         );
         return;
       }
+      _trackingSessionActive = true;
       _startTrackingClock();
-    } else {
-      _trackingTimer?.cancel();
-      _trackingTimer = null;
-      final positions = widget.locationService.trackedPositions;
-      _finishSafePlaceVisit(
-        _previousSafePlacePosition?.timestamp ?? DateTime.now(),
-      );
-      unawaited(widget.locationService.stopTracking());
-      final lastPosition = positions.isEmpty ? null : positions.last;
-      final tripName = _safePlaceContaining(lastPosition)?.name;
-      final savedTrip = widget.tripService.recordTripFromPositions(
-        positions,
-        name: tripName,
-      );
+      _updateTrackingState(true);
       final generation = ++_trackingSaveGeneration;
-      _updateTrackingState(enabled);
-      unawaited(_finishStoppingTracking(
-        savedTrip: savedTrip,
-        clearSharedLocation: _userSettings.familySharing,
-        generation: generation,
-        messenger: messenger,
-      ));
+      unawaited(_saveTrackingSettings(generation));
       return;
     }
 
-    _updateTrackingState(enabled);
+    _trackingTimer?.cancel();
+    _trackingTimer = null;
+    _finishSafePlaceVisit(
+      _previousSafePlacePosition?.timestamp ?? DateTime.now(),
+    );
+    final pauseFuture = widget.locationService.pauseTracking();
+    _updateTrackingState(false);
     final generation = ++_trackingSaveGeneration;
-    unawaited(_saveTrackingSettings(generation));
+    unawaited(_finishPausingTracking(
+      pause: pauseFuture,
+      clearSharedLocation: _userSettings.familySharing,
+      generation: generation,
+    ));
+  }
+
+  Future<void> _endTrip() async {
+    if (!_trackingSessionActive) return;
+
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    _trackingTimer?.cancel();
+    _trackingTimer = null;
+    _finishSafePlaceVisit(
+      _previousSafePlacePosition?.timestamp ?? DateTime.now(),
+    );
+    final pauseFuture = widget.locationService.pauseTracking();
+    _updateTrackingState(false);
+    await pauseFuture;
+
+    final positions = widget.locationService.trackedPositions;
+    final lastPosition = positions.isEmpty ? null : positions.last;
+    final savedTrip = widget.tripService.recordTripFromPositions(
+      positions,
+      name: _safePlaceContaining(lastPosition)?.name,
+      segmentStartIndices:
+          widget.locationService.trackingSegmentStartIndices,
+    );
+    await widget.locationService.stopTracking();
+    _trackingSessionActive = false;
+
+    final generation = ++_trackingSaveGeneration;
+    unawaited(_finishStoppingTracking(
+      savedTrip: savedTrip,
+      clearSharedLocation: _userSettings.familySharing,
+      generation: generation,
+      messenger: messenger,
+    ));
+    if (mounted) setState(() {});
   }
 
   void _updateTrackingState(bool enabled) {
@@ -383,6 +414,18 @@ class _BeaconShellState extends State<BeaconShell> {
         );
       }
     }
+    if (clearSharedLocation && generation == _trackingSaveGeneration) {
+      await widget.firestoreService.clearFamilyLocation(widget.user.uid);
+    }
+    await _saveTrackingSettings(generation);
+  }
+
+  Future<void> _finishPausingTracking({
+    required Future<void> pause,
+    required bool clearSharedLocation,
+    required int generation,
+  }) async {
+    await pause;
     if (clearSharedLocation && generation == _trackingSaveGeneration) {
       await widget.firestoreService.clearFamilyLocation(widget.user.uid);
     }
@@ -529,6 +572,17 @@ class _BeaconShellState extends State<BeaconShell> {
     );
   }
 
+  void _openChats() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatsPage(
+          currentUser: widget.user,
+          firestoreService: widget.firestoreService,
+        ),
+      ),
+    );
+  }
+
   void _openEmergency() {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -547,7 +601,9 @@ class _BeaconShellState extends State<BeaconShell> {
       HomePage(
         trackingEnabled: _trackingEnabled,
         onTrackingChanged: _setTracking,
+        trackingSessionActive: _trackingSessionActive,
         userName: widget.user.displayName,
+        onOpenChats: _openChats,
         onOpenProfile: _openProfile,
         onOpenNotifications: _openNotifications,
         onOpenEmergency: _openEmergency,
@@ -557,6 +613,8 @@ class _BeaconShellState extends State<BeaconShell> {
         liveTrackingDistanceMeters:
             widget.locationService.trackedDistanceMeters,
         trackingStartedAt: widget.locationService.trackingStartedAt,
+        trackingDuration: widget.locationService.trackingDuration,
+        onEndTrip: _endTrip,
       ),
       InsightsPage(tripService: widget.tripService),
       MapPage(
@@ -596,38 +654,55 @@ class _BeaconShellState extends State<BeaconShell> {
           clipBehavior: Clip.antiAlias,
           child: NavigationBar(
             selectedIndex: _selectedIndex,
+            indicatorColor: Colors.transparent,
             onDestinationSelected: (index) =>
                 setState(() => _selectedIndex = index),
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.near_me_outlined),
-                selectedIcon: Icon(Icons.near_me),
+                selectedIcon: _SelectedNavIcon(icon: Icons.near_me),
                 label: 'Today',
               ),
               NavigationDestination(
                 icon: Icon(Icons.insights_outlined),
-                selectedIcon: Icon(Icons.insights),
+                selectedIcon: _SelectedNavIcon(icon: Icons.insights),
                 label: 'Insights',
               ),
               NavigationDestination(
                 icon: Icon(Icons.map_outlined),
-                selectedIcon: Icon(Icons.map),
+                selectedIcon: _SelectedNavIcon(icon: Icons.map),
                 label: 'Map',
               ),
               NavigationDestination(
                 icon: Icon(Icons.family_restroom_outlined),
-                selectedIcon: Icon(Icons.family_restroom),
+                selectedIcon: _SelectedNavIcon(icon: Icons.family_restroom),
                 label: 'Family',
               ),
               NavigationDestination(
                 icon: Icon(Icons.route_outlined),
-                selectedIcon: Icon(Icons.route),
+                selectedIcon: _SelectedNavIcon(icon: Icons.route),
                 label: 'History',
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SelectedNavIcon extends StatelessWidget {
+  const _SelectedNavIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(
+      icon,
+      key: const ValueKey('selected-nav-icon'),
+      size: 22,
+      color: BeaconColors.lime,
     );
   }
 }

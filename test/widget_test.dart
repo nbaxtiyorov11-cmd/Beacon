@@ -26,6 +26,7 @@ import 'package:beacon/pages/notifications_page.dart';
 import 'package:beacon/services/firestore_service.dart';
 import 'package:beacon/services/location_service.dart';
 import 'package:beacon/services/trip_service.dart';
+import 'package:beacon/theme/beacon_theme.dart';
 
 Position _gpsPosition(double latitude, double longitude, DateTime timestamp) =>
     Position(
@@ -140,6 +141,29 @@ void main() {
     expect(traceSegments.map((segment) => segment.length), [2, 1]);
   });
 
+  test('paused trip segments do not add paused time or distance', () {
+    final startTime = DateTime.utc(2026, 10, 18, 10);
+    final positions = [
+      _gpsPosition(41.3, 69.2, startTime),
+      _gpsPosition(41.3001, 69.2001, startTime.add(const Duration(seconds: 5))),
+      _gpsPosition(41.5, 69.5, startTime.add(const Duration(seconds: 7))),
+    ];
+    final trip = TripService().recordTripFromPositions(
+      positions,
+      segmentStartIndices: const {2},
+    )!;
+    final distanceBeforePause = Geolocator.distanceBetween(
+      positions[0].latitude,
+      positions[0].longitude,
+      positions[1].latitude,
+      positions[1].longitude,
+    );
+
+    expect(trip.distanceMeters, closeTo(distanceBeforePause, 0.1));
+    expect(trip.movingSeconds, 5);
+    expect(trip.points.map((point) => point.segmentStart), [true, false, true]);
+  });
+
   test('profile refresh payload leaves saved settings untouched', () {
     final payload = FirestoreService.userProfileUpdateData(
       const AuthUser(uid: 'alex-id', email: 'alex@example.com'),
@@ -174,6 +198,43 @@ void main() {
     await authService.dispose();
   });
 
+  testWidgets('pausing and continuing preserves the active trip', (
+    WidgetTester tester,
+  ) async {
+    final authService = _FakeAuthService(
+      initialUser: const AuthUser(uid: 'alex-id', email: 'alex@example.com'),
+    );
+    final locationService = _FakeLocationService();
+
+    await tester.pumpWidget(BeaconApp(
+      authService: authService,
+      locationService: locationService,
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Start tracking'));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('tracking-session-action')), findsOneWidget);
+    expect(find.byKey(const ValueKey('end-trip-action')), findsOneWidget);
+    await tester.tap(find.text('Pause trip'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('TRACKING PAUSED'), findsOneWidget);
+    expect(find.text('End trip'), findsOneWidget);
+    expect(find.text('1.2 km'), findsWidgets);
+    expect(find.textContaining('3 min active · Trip paused'), findsOneWidget);
+
+    await tester.tap(find.text('Continue trip'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('TRACKING LIVE'), findsOneWidget);
+    expect(locationService.startCalls, 1);
+    expect(locationService.resumeCalls, 1);
+    expect(locationService.hasActiveTrip, isTrue);
+    await authService.dispose();
+  });
+
   testWidgets('stopping tracking updates the UI before settings are saved', (
     WidgetTester tester,
   ) async {
@@ -192,7 +253,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('TRACKING LIVE'), findsOneWidget);
 
-    await tester.tap(find.text('Pause tracking'));
+    await tester.tap(find.text('Pause trip'));
     await tester.pump();
     expect(find.text('TRACKING PAUSED'), findsOneWidget);
     expect(firestoreService.settingsWriteCalls, greaterThanOrEqualTo(2));
@@ -283,7 +344,7 @@ void main() {
     await authService.dispose();
   });
 
-  testWidgets('main navigation is ordered and chats live inside family', (
+  testWidgets('main navigation order and header chats route are correct', (
     WidgetTester tester,
   ) async {
     final authService = _FakeAuthService(
@@ -304,6 +365,20 @@ void main() {
       destinations,
       ['Today', 'Insights', 'Map', 'Family', 'History'],
     );
+    final navigationBar = tester.widget<NavigationBar>(
+      find.byType(NavigationBar),
+    );
+    expect(navigationBar.indicatorColor, Colors.transparent);
+    final selectedIcon = tester.widget<Icon>(
+      find.byKey(const ValueKey('selected-nav-icon')),
+    );
+    expect(selectedIcon.color, BeaconColors.lime);
+    await tester.tap(find.byTooltip('Chats'));
+    await tester.pumpAndSettle();
+    expect(find.text('Messages'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('Map'));
     await tester.pumpAndSettle();
     expect(
@@ -318,9 +393,8 @@ void main() {
     );
 
     expect(find.text('Family circle'), findsOneWidget);
-    await tester.tap(find.text('Chats'));
-    await tester.pumpAndSettle();
-    expect(find.text('Family chats'), findsOneWidget);
+    expect(find.text('Chats'), findsNothing);
+    expect(find.text('Family chats'), findsNothing);
     await authService.dispose();
   });
 
@@ -362,6 +436,7 @@ void main() {
     await tester.tap(find.byTooltip('Your profile'));
     await tester.pumpAndSettle();
     expect(find.text('Profile'), findsOneWidget);
+    expect(find.text('Delete account'), findsNothing);
     expect(find.text('alex@example.com'), findsWidgets);
 
     await tester.ensureVisible(find.text('Edit name'));
@@ -471,6 +546,13 @@ void main() {
     expect(find.text('12% more than the previous period'), findsNothing);
     expect(find.textContaining('You covered 2.5 km across 1 trip'),
         findsOneWidget);
+
+    await tester.tap(find.text('Month'));
+    await tester.pumpAndSettle();
+    expect(find.text('MONTHLY DISTANCE'), findsOneWidget);
+    await tester.tap(find.text('Year'));
+    await tester.pumpAndSettle();
+    expect(find.text('YEARLY DISTANCE'), findsOneWidget);
   });
 
   testWidgets('Today metrics are calculated from real trip data', (
@@ -506,6 +588,7 @@ void main() {
           trackingEnabled: false,
           onTrackingChanged: (_) {},
           userName: 'Alex Morgan',
+          onOpenChats: () {},
           onOpenProfile: () {},
           onOpenNotifications: () {},
           onOpenEmergency: () {},
@@ -631,7 +714,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Add safe place'), findsOneWidget);
-    final circle = tester.widget<CircleLayer>(find.byType(CircleLayer)).circles.single;
+    final radiusSlider = tester.widget<Slider>(find.byType(Slider));
+    expect(radiusSlider.min, 20);
+    expect(radiusSlider.divisions, 48);
+    final circle =
+        tester.widget<CircleLayer>(find.byType(CircleLayer)).circles.single;
     expect(circle.useRadiusInMeter, isTrue);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -1027,6 +1114,22 @@ class _FakeLocationService extends LocationService {
   _FakeLocationService();
 
   int startCalls = 0;
+  int resumeCalls = 0;
+  bool _hasActiveTrip = false;
+  bool _trackingEnabled = false;
+
+  @override
+  bool get hasActiveTrip => _hasActiveTrip;
+
+  @override
+  bool get trackingEnabled => _trackingEnabled;
+
+  @override
+  double get trackedDistanceMeters => _hasActiveTrip ? 1234 : 0;
+
+  @override
+  Duration get trackingDuration =>
+      _hasActiveTrip ? const Duration(minutes: 3) : Duration.zero;
 
   @override
   Future<Position?> getCurrentPosition() async => null;
@@ -1034,11 +1137,28 @@ class _FakeLocationService extends LocationService {
   @override
   Future<bool> startTracking() async {
     startCalls += 1;
+    _hasActiveTrip = true;
+    _trackingEnabled = true;
     return true;
   }
 
   @override
-  Future<void> stopTracking() async {}
+  Future<bool> resumeTracking() async {
+    resumeCalls += 1;
+    _trackingEnabled = true;
+    return true;
+  }
+
+  @override
+  Future<void> pauseTracking() async {
+    _trackingEnabled = false;
+  }
+
+  @override
+  Future<void> stopTracking() async {
+    _trackingEnabled = false;
+    _hasActiveTrip = false;
+  }
 }
 
 class _SlowLocationService extends LocationService {
@@ -1119,9 +1239,6 @@ class _FakeAuthService implements AuthService {
 
   @override
   Future<AuthUser?> reloadCurrentUser() async => _user;
-
-  @override
-  Future<void> deleteAccount() => signOut();
 
   @override
   Future<void> signOut() async {

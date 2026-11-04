@@ -7,7 +7,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/auth_service.dart';
-import 'chat_room_page.dart';
 import 'member_profile_page.dart';
 import '../services/firestore_service.dart';
 import '../services/location_service.dart';
@@ -44,9 +43,7 @@ class FamilyPage extends StatefulWidget {
 class _FamilyPageState extends State<FamilyPage> {
   bool _sharingEnabled = false;
   bool _savingSharing = false;
-  bool _showChats = false;
   late final Stream<List<FamilyContact>> _familyContacts;
-  late final Stream<List<ChatConversation>> _chatConversations;
   late final Stream<List<SafePlace>> _safePlaces;
   Timer? _alertExpiryTimer;
 
@@ -56,8 +53,6 @@ class _FamilyPageState extends State<FamilyPage> {
     _sharingEnabled = widget.familySharing;
     _familyContacts =
         widget.firestoreService.watchFamilyContacts(widget.userId);
-    _chatConversations =
-        widget.firestoreService.watchChatConversations(widget.userId);
     _safePlaces = widget.firestoreService.watchSafePlaces(widget.userId);
     _alertExpiryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -201,23 +196,6 @@ class _FamilyPageState extends State<FamilyPage> {
     ));
   }
 
-  Future<void> _openConversation(ChatConversation conversation) async {
-    final profile = conversation.otherProfile(widget.currentUser.uid);
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => ChatRoomPage(
-        currentUser: widget.currentUser,
-        chatId: conversation.id,
-        otherProfile: PublicUserProfile(
-          uid: profile['uid'] as String? ?? '',
-          email: profile['email'] as String? ?? '',
-          displayName: profile['displayName'] as String? ?? 'Beacon member',
-          photoUrl: profile['photoURL'] as String? ?? '',
-        ),
-        firestoreService: widget.firestoreService,
-      ),
-    ));
-  }
-
   Future<void> _addSafePlace() async {
     final locationService = widget.locationService;
     if (locationService == null) {
@@ -283,85 +261,6 @@ class _FamilyPageState extends State<FamilyPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_showChats) {
-      return StreamBuilder<List<ChatConversation>>(
-        stream: _chatConversations,
-        builder: (context, snapshot) {
-          final conversations = snapshot.data ?? const <ChatConversation>[];
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-            children: [
-              const PageHeading(
-                eyebrow: 'Private and direct',
-                title: 'Family chats',
-                subtitle: 'Keep your circle close and connected.',
-              ),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, label: Text('Family')),
-                  ButtonSegment(value: true, label: Text('Chats')),
-                ],
-                selected: {_showChats},
-                onSelectionChanged: (selection) =>
-                    setState(() => _showChats = selection.first),
-              ),
-              const SizedBox(height: 16),
-              if (snapshot.hasError)
-                const SurfacePanel(
-                  child: Text('Could not load chats. Check your connection.'),
-                )
-              else if (conversations.isEmpty)
-                const SurfacePanel(
-                  child: Padding(
-                    padding: EdgeInsets.all(22),
-                    child: Column(
-                      children: [
-                        Icon(Icons.chat_bubble_outline_rounded,
-                            size: 42, color: BeaconColors.muted),
-                        SizedBox(height: 12),
-                        Text(
-                          'No family messages yet',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 21,
-                            fontWeight: FontWeight.w700,
-                            color: BeaconColors.ink,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Messages with your circle will show up here.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: BeaconColors.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                SurfacePanel(
-                  child: Column(
-                    children: [
-                      for (var index = 0;
-                          index < conversations.length;
-                          index++) ...[
-                        if (index > 0)
-                          const Divider(height: 1, color: BeaconColors.line),
-                        _ChatListTile(
-                          conversation: conversations[index],
-                          currentUserId: widget.currentUser.uid,
-                          onTap: () => _openConversation(conversations[index]),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-            ],
-          );
-        },
-      );
-    }
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: [
@@ -372,12 +271,11 @@ class _FamilyPageState extends State<FamilyPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'SHARE ONLY WITH YOUR PEOPLE',
+                    'YOUR PEOPLE',
                     style: TextStyle(
-                      color: BeaconColors.muted,
-                      fontSize: 12,
+                      color: BeaconColors.forest,
+                      fontSize: 11,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
                     ),
                   ),
                   SizedBox(height: 4),
@@ -388,87 +286,128 @@ class _FamilyPageState extends State<FamilyPage> {
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
                       height: 1.08,
-                      letterSpacing: -0.8,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Your trusted circle and places.',
+                    style: TextStyle(
+                      color: BeaconColors.muted,
+                      fontSize: 13,
                     ),
                   ),
                 ],
               ),
             ),
-            GestureDetector(
-              onTap: _inviteMember,
-              child: Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: BeaconColors.line),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.add,
-                  color: BeaconColors.ink,
-                  size: 28,
+            OutlinedButton.icon(
+              onPressed: _inviteMember,
+              icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+              label: const Text('Invite'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: BeaconColors.ink,
+                side: const BorderSide(color: BeaconColors.line),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 18),
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: false, label: Text('Family')),
-            ButtonSegment(value: true, label: Text('Chats')),
-          ],
-          selected: {_showChats},
-          onSelectionChanged: (selection) =>
-              setState(() => _showChats = selection.first),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         Container(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+          padding: const EdgeInsets.fromLTRB(17, 16, 17, 14),
           decoration: BoxDecoration(
-            color: BeaconColors.forest,
-            borderRadius: BorderRadius.circular(22),
+            color: BeaconColors.ink,
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.shield_outlined,
-                      color: BeaconColors.lime, size: 20),
-                  SizedBox(width: 10),
-                  Text(
-                    'LOCATION SHARING',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: BeaconColors.lime.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.shield_outlined,
+                      color: BeaconColors.lime,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Location sharing',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Private to your accepted circle',
+                          style: TextStyle(
+                            color: Color(0xFFB8C7BD),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: _sharingEnabled
+                          ? BeaconColors.lime.withValues(alpha: 0.16)
+                          : Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      _sharingEnabled ? 'ON' : 'OFF',
+                      style: TextStyle(
+                        color: _sharingEnabled
+                            ? BeaconColors.lime
+                            : const Color(0xFFCFD9D2),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               Text(
                 _sharingEnabled ? 'Sharing is on' : 'Sharing is off',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 _sharingEnabled
                     ? 'Your circle can see your latest location while tracking is active.'
-                    : 'You decide when your circle can see your location.',
+                    : 'Turn on sharing to let your circle see your location while tracking.',
                 style: const TextStyle(
-                  color: Color(0xFFBDD1C8),
-                  fontSize: 14,
+                  color: Color(0xFFCFD9D2),
+                  fontSize: 13,
                   height: 1.4,
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
+              const Divider(color: Color(0x334D7162), height: 1),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   const Expanded(
@@ -476,7 +415,7 @@ class _FamilyPageState extends State<FamilyPage> {
                       'Share my location',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 18,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -495,28 +434,27 @@ class _FamilyPageState extends State<FamilyPage> {
         const SizedBox(height: 26),
         Row(
           children: [
-            const Expanded(
-              child: Text(
-                'YOUR CIRCLE',
-                style: TextStyle(
-                  color: BeaconColors.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: BeaconColors.blue.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.groups_rounded,
+                color: BeaconColors.forest,
+                size: 20,
               ),
             ),
-            TextButton(
-              onPressed: _inviteMember,
-              style: TextButton.styleFrom(
-                foregroundColor: BeaconColors.ink,
-                padding: EdgeInsets.zero,
-              ),
-              child: const Text(
-                'Invite',
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Your circle',
                 style: TextStyle(
                   color: BeaconColors.ink,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
@@ -578,14 +516,36 @@ class _FamilyPageState extends State<FamilyPage> {
             );
           },
         ),
-        const SizedBox(height: 22),
-        const Text(
-          'SAFE PLACES',
-          style: TextStyle(
-            color: BeaconColors.muted,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-          ),
+        const SizedBox(height: 24),
+        const Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Color(0x1FE66E61),
+                borderRadius: BorderRadius.all(Radius.circular(10)),
+              ),
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.place_rounded,
+                  color: BeaconColors.coral,
+                  size: 20,
+                ),
+              ),
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Safe places',
+                style: TextStyle(
+                  color: BeaconColors.ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
         StreamBuilder<List<SafePlace>>(
@@ -601,77 +561,124 @@ class _FamilyPageState extends State<FamilyPage> {
                       child: Text('Could not load safe places.'),
                     )
                   else if (places.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'No safe places added',
-                          style: TextStyle(color: BeaconColors.muted),
-                        ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: BeaconColors.coral.withValues(alpha: 0.13),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.add_location_alt_outlined,
+                              color: BeaconColors.coral,
+                            ),
+                          ),
+                          const SizedBox(width: 11),
+                          const Expanded(
+                            child: Text(
+                              'No safe places added',
+                              style: TextStyle(color: BeaconColors.muted),
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   else
                     for (var index = 0; index < places.length; index++) ...[
                       if (index > 0)
                         const Divider(height: 1, color: BeaconColors.line),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE9F0E3),
-                            borderRadius: BorderRadius.circular(12),
+                      Builder(builder: (context) {
+                        final place = places[index];
+                        final active = widget.activeSafePlaceId == place.id;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: active
+                                  ? BeaconColors.lime.withValues(alpha: 0.28)
+                                  : BeaconColors.coral.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              active
+                                  ? Icons.home_filled
+                                  : Icons.place_outlined,
+                              color: active
+                                  ? BeaconColors.forest
+                                  : BeaconColors.coral,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.place_outlined,
-                            color: BeaconColors.ink,
+                          title: Text(
+                            place.name,
+                            style: const TextStyle(
+                              color: BeaconColors.ink,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                        title: Text(
-                          places[index].name,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: Text(
-                          '${places[index].radiusMeters.round()} m radius · ${_formatVisitTime(places[index].totalVisitSeconds)} total${widget.activeSafePlaceId == places[index].id ? ' · here now ${_formatVisitTime(widget.activeSafePlaceSeconds)}' : ''}',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: BeaconColors.muted),
-                        ),
-                        trailing: IconButton(
-                          tooltip: 'Remove safe place',
-                          onPressed: () => _deleteSafePlace(places[index]),
-                          icon: const Icon(Icons.delete_outline),
-                          color: BeaconColors.muted,
-                        ),
-                      ),
+                          subtitle: Text(
+                            '${place.radiusMeters.round()} m radius · ${_formatVisitTime(place.totalVisitSeconds)} total${active ? ' · here now ${_formatVisitTime(widget.activeSafePlaceSeconds)}' : ''}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: BeaconColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (active)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE7F1DE),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const Text(
+                                    'HERE',
+                                    style: TextStyle(
+                                      color: BeaconColors.forest,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              IconButton(
+                                tooltip: 'Remove safe place',
+                                onPressed: () => _deleteSafePlace(place),
+                                icon: const Icon(Icons.delete_outline),
+                                color: BeaconColors.muted,
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
                     ],
-                  const Divider(height: 1, color: BeaconColors.line),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8E5DD),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.add, color: BeaconColors.ink),
-                    ),
-                    title: const Text(
-                      'Add a safe place',
-                      style: TextStyle(
-                        color: BeaconColors.ink,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                  const Divider(height: 16, color: BeaconColors.line),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonalIcon(
+                      onPressed: _addSafePlace,
+                      icon: const Icon(Icons.add_location_alt_outlined),
+                      label: const Text('Add a safe place'),
+                      style: FilledButton.styleFrom(
+                        foregroundColor: BeaconColors.forest,
+                        backgroundColor: const Color(0xFFE7F1DE),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
-                    trailing: const Icon(
-                      Icons.chevron_right,
-                      color: BeaconColors.muted,
-                    ),
-                    onTap: _addSafePlace,
                   ),
                 ],
               ),
@@ -904,9 +911,9 @@ class _SafePlacePickerPageState extends State<_SafePlacePickerPage> {
                         ),
                         Slider(
                           value: _radiusMeters,
-                          min: 50,
+                          min: 20,
                           max: 500,
-                          divisions: 18,
+                          divisions: 48,
                           label: '${_radiusMeters.round()} m',
                           onChanged: (value) =>
                               setState(() => _radiusMeters = value),
@@ -957,6 +964,18 @@ class _FamilyMember extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final avatarColor = emergencyActive
+      ? BeaconColors.coral
+      : locationUpdatedAt != null
+        ? BeaconColors.blue
+        : isYou
+          ? BeaconColors.forest
+          : BeaconColors.ink;
+    final avatarBackground = emergencyActive
+      ? BeaconColors.coral.withValues(alpha: 0.15)
+      : locationUpdatedAt != null
+        ? BeaconColors.blue.withValues(alpha: 0.18)
+        : const Color(0xFFE9EEE8);
     final label = emergencyActive
         ? 'SOS active · ${_relativeTime(locationUpdatedAt)}'
         : locationUpdatedAt != null
@@ -965,20 +984,58 @@ class _FamilyMember extends StatelessWidget {
                 ? email
                 : (isYou ? 'You · organizer' : 'Member · location hidden');
     return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        backgroundColor: isYou ? BeaconColors.lime : const Color(0xFFE8EEDB),
-        foregroundColor: BeaconColors.ink,
-        child:
-            Text(name.isNotEmpty ? name.characters.first.toUpperCase() : 'F'),
+      contentPadding: const EdgeInsets.symmetric(vertical: 3),
+      leading: SizedBox(
+        width: 46,
+        height: 46,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: avatarBackground,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                name.isNotEmpty ? name.characters.first.toUpperCase() : 'F',
+                style: TextStyle(
+                  color: avatarColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            if (emergencyActive || locationUpdatedAt != null)
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: emergencyActive ? BeaconColors.coral : BeaconColors.forest,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
-      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+      title: Text(
+        name,
+        style: const TextStyle(
+          color: BeaconColors.ink,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
       subtitle: Text(
         label,
         style: emergencyActive
             ? const TextStyle(
                 color: BeaconColors.coral, fontWeight: FontWeight.w600)
-            : null,
+            : const TextStyle(color: BeaconColors.muted, fontSize: 12),
       ),
       onTap: onTap,
       trailing: isYou
@@ -1010,96 +1067,12 @@ class _FamilyMember extends StatelessWidget {
   }
 }
 
-class _ChatListTile extends StatelessWidget {
-  const _ChatListTile({
-    required this.conversation,
-    required this.currentUserId,
-    required this.onTap,
-  });
-
-  final ChatConversation conversation;
-  final String currentUserId;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final profile = conversation.otherProfile(currentUserId);
-    final displayName = profile['displayName'] as String? ?? 'Beacon member';
-    final lastMessage = conversation.lastMessage.isEmpty
-        ? 'Say hello to start chatting'
-        : conversation.lastMessage;
-    final initials = displayName.trim().isNotEmpty
-        ? displayName.trim()[0].toUpperCase()
-        : 'B';
-    final badgeColor = conversation.hasUnreadFor(currentUserId)
-        ? BeaconColors.lime
-        : const Color(0xFFE9E7DD);
-
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        radius: 22,
-        backgroundColor: badgeColor,
-        foregroundColor: BeaconColors.ink,
-        child:
-            Text(initials, style: const TextStyle(fontWeight: FontWeight.w700)),
-      ),
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Text(
-              displayName,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-          Text(
-            _formatChatTime(conversation.lastMessageAt),
-            style: const TextStyle(color: BeaconColors.muted, fontSize: 12),
-          ),
-        ],
-      ),
-      subtitle: Text(
-        lastMessage,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: conversation.hasUnreadFor(currentUserId)
-          ? Container(
-              width: 18,
-              height: 18,
-              decoration: const BoxDecoration(
-                color: BeaconColors.lime,
-                shape: BoxShape.circle,
-              ),
-            )
-          : null,
-      onTap: onTap,
-    );
-  }
-}
-
 String _formatVisitTime(int seconds) {
   final duration = Duration(seconds: seconds);
   if (duration.inHours > 0) {
     return '${duration.inHours}h ${duration.inMinutes.remainder(60)}m';
   }
   return '${duration.inMinutes}m';
-}
-
-String _formatChatTime(DateTime? value) {
-  if (value == null) return '';
-  final now = DateTime.now();
-  final difference = now.difference(value);
-  if (difference.inDays == 0) {
-    final time = value.toLocal();
-    final hour = time.hour.toString().padLeft(2, '0');
-    final minute = time.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
-  if (difference.inDays == 1) return 'Yesterday';
-  return '${value.day}/${value.month}';
 }
 
 String _relativeTime(DateTime? value) {

@@ -83,11 +83,53 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: const Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Color(0x1FE66E61),
+                borderRadius: BorderRadius.all(Radius.circular(9)),
+              ),
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.notifications_active_rounded,
+                  color: BeaconColors.coral,
+                  size: 19,
+                ),
+              ),
+            ),
+            SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ALERT CENTER',
+                  style: TextStyle(
+                    color: BeaconColors.forest,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Notifications',
+                  style: TextStyle(
+                    color: BeaconColors.ink,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
         centerTitle: false,
         foregroundColor: BeaconColors.ink,
         backgroundColor: BeaconColors.paper,
         elevation: 0,
+        scrolledUnderElevation: 0,
       ),
       body: StreamBuilder<List<FamilyContact>>(
         stream: _familyContacts,
@@ -113,33 +155,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
               final hasNotifications =
                   visibleAlerts.isNotEmpty || visibleInvitations.isNotEmpty;
               return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
                 children: [
-                  SegmentedButton<_NotificationFilter>(
-                    segments: const [
-                      ButtonSegment(
-                        value: _NotificationFilter.all,
-                        label: Text('All'),
-                      ),
-                      ButtonSegment(
-                        value: _NotificationFilter.emergency,
-                        label: Text('Emergency'),
-                      ),
-                      ButtonSegment(
-                        value: _NotificationFilter.requests,
-                        label: Text('Requests'),
-                      ),
-                    ],
-                    selected: {_filter},
-                    onSelectionChanged: (selection) =>
-                        setState(() => _filter = selection.first),
-                    showSelectedIcon: false,
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                      textStyle: WidgetStatePropertyAll(
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                    ),
+                  _NotificationFilterBar(
+                    selected: _filter,
+                    onChanged: (filter) => setState(() => _filter = filter),
+                    alertCount: activeAlerts.length,
+                    requestCount: invitations.length,
                   ),
                   if (snapshot.hasError || invitationSnapshot.hasError)
                     const Padding(
@@ -243,6 +265,109 @@ class _NotificationsPageState extends State<NotificationsPage> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _NotificationFilterBar extends StatelessWidget {
+  const _NotificationFilterBar({
+    required this.selected,
+    required this.onChanged,
+    required this.alertCount,
+    required this.requestCount,
+  });
+
+  final _NotificationFilter selected;
+  final ValueChanged<_NotificationFilter> onChanged;
+  final int alertCount;
+  final int requestCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final filters = [
+      (_NotificationFilter.all, 'All', Icons.inbox_rounded,
+          alertCount + requestCount),
+      (_NotificationFilter.emergency, 'Emergency', Icons.sos_rounded,
+          alertCount),
+      (_NotificationFilter.requests, 'Requests', Icons.person_add_alt_1_rounded,
+          requestCount),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: BeaconColors.line),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          for (final (filter, label, icon, count) in filters)
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: selected == filter,
+                label: '$label, $count',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => onChanged(filter),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected == filter
+                          ? BeaconColors.forest
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 15,
+                          color: selected == filter
+                              ? BeaconColors.lime
+                              : BeaconColors.muted,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: selected == filter
+                                  ? Colors.white
+                                  : BeaconColors.ink,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (count > 0) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '$count',
+                            style: TextStyle(
+                              color: selected == filter
+                                  ? BeaconColors.lime
+                                  : BeaconColors.muted,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

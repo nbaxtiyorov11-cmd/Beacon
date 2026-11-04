@@ -100,9 +100,37 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: const Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Color(0xFFE7EEE9),
+                borderRadius: BorderRadius.all(Radius.circular(9)),
+              ),
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.tune_rounded,
+                  color: BeaconColors.forest,
+                  size: 19,
+                ),
+              ),
+            ),
+            SizedBox(width: 10),
+            Text(
+              'Settings',
+              style: TextStyle(
+                color: BeaconColors.ink,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: BeaconColors.paper,
         surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -119,11 +147,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: BeaconColors.lime,
-                    borderRadius: BorderRadius.circular(8),
+                    color: BeaconColors.blue.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child:
-                      const Icon(Icons.person_outline, color: BeaconColors.ink),
+                  child: const Icon(
+                    Icons.person_outline,
+                    color: BeaconColors.blue,
+                  ),
                 ),
                 const SizedBox(width: 13),
                 Expanded(
@@ -131,11 +161,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'SIGNED IN AS',
+                        'ACCOUNT',
                         style: TextStyle(
-                          color: Color(0xFFB8C7BD),
+                          color: BeaconColors.lime,
                           fontSize: 10,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 5),
@@ -156,25 +186,39 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 26),
-          const _SettingsSectionHeading('Movement'),
+          const _SettingsSectionHeading(
+            'Movement',
+            icon: Icons.route_rounded,
+            color: BeaconColors.blue,
+          ),
           const SizedBox(height: 9),
           _SettingsGroup(
             children: [
               SwitchListTile.adaptive(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                secondary: const _SettingIcon(Icons.my_location_outlined),
+                secondary: const _SettingIcon(
+                  Icons.my_location_outlined,
+                  color: BeaconColors.blue,
+                ),
                 title: const Text('Track my movement'),
                 subtitle: const Text('Start or pause location recording'),
                 value: widget.trackingEnabled,
+                activeThumbColor: BeaconColors.lime,
+                activeTrackColor: BeaconColors.forest,
                 onChanged: widget.onTrackingChanged,
               ),
               const Divider(height: 1, indent: 62, color: BeaconColors.line),
               SwitchListTile.adaptive(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                secondary: const _SettingIcon(Icons.location_searching),
+                secondary: const _SettingIcon(
+                  Icons.location_searching,
+                  color: BeaconColors.forest,
+                ),
                 title: const Text('Approximate location'),
                 subtitle: const Text('Share a broader area instead of a pin'),
                 value: _approximateLocation,
+                activeThumbColor: BeaconColors.lime,
+                activeTrackColor: BeaconColors.forest,
                 onChanged: (value) {
                   setState(() => _approximateLocation = value);
                   widget.onUserSettingsChanged(
@@ -190,16 +234,25 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
           const SizedBox(height: 24),
-          const _SettingsSectionHeading('Sharing and alerts'),
+          const _SettingsSectionHeading(
+            'Sharing and alerts',
+            icon: Icons.notifications_active_outlined,
+            color: BeaconColors.coral,
+          ),
           const SizedBox(height: 9),
           _SettingsGroup(
             children: [
               SwitchListTile.adaptive(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                secondary: const _SettingIcon(Icons.family_restroom_outlined),
+                secondary: const _SettingIcon(
+                  Icons.family_restroom_outlined,
+                  color: BeaconColors.blue,
+                ),
                 title: const Text('Family location sharing'),
                 subtitle: const Text('Share with your approved circle'),
                 value: _familySharing,
+                activeThumbColor: BeaconColors.lime,
+                activeTrackColor: BeaconColors.forest,
                 onChanged: (value) {
                   setState(() => _familySharing = value);
                   widget.onUserSettingsChanged(
@@ -215,10 +268,15 @@ class _SettingsPageState extends State<SettingsPage> {
               const Divider(height: 1, indent: 62, color: BeaconColors.line),
               SwitchListTile.adaptive(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                secondary: const _SettingIcon(Icons.notifications_none_rounded),
+                secondary: const _SettingIcon(
+                  Icons.notifications_none_rounded,
+                  color: BeaconColors.coral,
+                ),
                 title: const Text('Notifications'),
                 subtitle: const Text('Movement and place updates'),
                 value: _notifications,
+                activeThumbColor: BeaconColors.lime,
+                activeTrackColor: BeaconColors.forest,
                 onChanged: (value) {
                   setState(() => _notifications = value);
                   widget.onUserSettingsChanged(
@@ -234,7 +292,11 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
           const SizedBox(height: 24),
-          const _SettingsSectionHeading('Your data'),
+          const _SettingsSectionHeading(
+            'Your data',
+            icon: Icons.shield_outlined,
+            color: BeaconColors.forest,
+          ),
           const SizedBox(height: 9),
           _SettingsGroup(
             children: [
@@ -270,19 +332,39 @@ class _SettingsPageState extends State<SettingsPage> {
 }
 
 class _SettingsSectionHeading extends StatelessWidget {
-  const _SettingsSectionHeading(this.title);
+  const _SettingsSectionHeading(
+    this.title, {
+    required this.icon,
+    required this.color,
+  });
 
   final String title;
+  final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        color: BeaconColors.ink,
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-      ),
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(
+            color: BeaconColors.ink,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -311,9 +393,10 @@ class _SettingsGroup extends StatelessWidget {
 }
 
 class _SettingIcon extends StatelessWidget {
-  const _SettingIcon(this.icon);
+  const _SettingIcon(this.icon, {this.color = BeaconColors.forest});
 
   final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -321,10 +404,10 @@ class _SettingIcon extends StatelessWidget {
       width: 34,
       height: 34,
       decoration: BoxDecoration(
-        color: const Color(0xFFE8EEDB),
-        borderRadius: BorderRadius.circular(7),
+        color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(9),
       ),
-      child: Icon(icon, color: BeaconColors.forest, size: 18),
+      child: Icon(icon, color: color, size: 18),
     );
   }
 }
@@ -347,7 +430,10 @@ class _SettingsAction extends StatelessWidget {
     final color = destructive ? BeaconColors.coral : BeaconColors.ink;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-      leading: _SettingIcon(icon),
+      leading: _SettingIcon(
+        icon,
+        color: destructive ? BeaconColors.coral : BeaconColors.forest,
+      ),
       title: Text(title, style: TextStyle(color: color)),
       trailing: Icon(Icons.chevron_right, color: color),
       onTap: onTap,

@@ -47,279 +47,450 @@ class _ActivityPageState extends State<ActivityPage> {
     return '${value.day}/${value.month}/${value.year}';
   }
 
-  String _formatDuration(DateTime start, DateTime end) {
-    final duration = end.difference(start);
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes % 60;
-    if (hours > 0) {
-      return '${hours}h ${minutes}m';
-    }
-    return '${minutes}m';
+  String _formatTotalDuration(int minutes) {
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+    if (hours > 0) return '${hours}h ${remainingMinutes}m';
+    return '${remainingMinutes}m';
   }
 
   @override
   Widget build(BuildContext context) {
     final trip = _activeTrip;
     final trips = _visibleTrips;
+    final totalDistance =
+        trips.fold<double>(0, (total, item) => total + item.distanceMeters);
+    final totalMinutes = trips.fold<int>(
+      0,
+      (total, item) => total + item.totalMinutes.round(),
+    );
 
     return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
       children: [
-        const PageHeading(
-          eyebrow: 'Your places and trips',
-          title: 'Movement history',
-          subtitle: 'A simple view of where your day took you.',
+        Row(
+          children: [
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'TRIPS & ROUTES',
+                    style: TextStyle(
+                      color: BeaconColors.forest,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: 5),
+                  Text(
+                    'Movement history',
+                    style: TextStyle(
+                      color: BeaconColors.ink,
+                      fontSize: 28,
+                      height: 1.05,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE7EEE9),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.route_rounded,
+                color: BeaconColors.forest,
+                size: 22,
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 18),
         SizedBox(
-          height: 42,
+          height: 40,
           child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
             itemCount: 7,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            separatorBuilder: (_, __) => const SizedBox(width: 7),
             itemBuilder: (context, index) {
               final selected = _selectedDay == index;
-              return ChoiceChip(
-                label: Text(index == 0 ? 'Today' : '${index}d ago'),
+              return _HistoryDayButton(
+                label: index == 0 ? 'Today' : '${index}d ago',
                 selected: selected,
-                onSelected: (_) => setState(() => _selectedDay = index),
-                selectedColor: BeaconColors.ink,
-                labelStyle: TextStyle(
-                  color: selected ? Colors.white : BeaconColors.ink,
-                  fontWeight: FontWeight.w600,
-                ),
-                side: BorderSide(
-                  color: selected ? BeaconColors.ink : BeaconColors.line,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                onTap: () => setState(() {
+                  _selectedDay = index;
+                  _selectedTripIndex = 0;
+                }),
               );
             },
           ),
         ),
-        const SizedBox(height: 22),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Container(
-            height: 185,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE5EBDE),
-              borderRadius: BorderRadius.circular(8),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _HistoryMetric(
+                label: 'DISTANCE',
+                value: '${(totalDistance / 1000).toStringAsFixed(1)} km',
+                icon: Icons.straighten_rounded,
+                color: BeaconColors.blue,
+              ),
             ),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _HistoryMapPainter(
-                      trip: trip,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 15,
-                  top: 13,
-                  child: _MapTag(
-                    icon: Icons.layers_outlined,
-                    text: trip == null ? 'NO ROUTE' : 'DAY ROUTE',
-                  ),
-                ),
-                Positioned(
-                  left: 18,
-                  bottom: 14,
-                  child: Text(
-                    trip == null
-                        ? '0.0 km  ·  0 stops'
-                        : '${(trip.distanceMeters / 1000).toStringAsFixed(1)} km  ·  ${trip.points.length} stops',
-                    style: const TextStyle(
-                      color: BeaconColors.ink,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 14,
-                  bottom: 12,
-                  child: IconButton.filledTonal(
-                    tooltip: 'Map view',
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Interactive maps will be added next.'),
-                      ),
-                    ),
-                    icon: const Icon(Icons.map_outlined),
-                  ),
-                ),
-              ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: _HistoryMetric(
+                label: 'TRIPS',
+                value: '${trips.length}',
+                icon: Icons.alt_route_rounded,
+                color: BeaconColors.coral,
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _HistoryMetric(
+                label: 'TIME',
+                value: _formatTotalDuration(totalMinutes),
+                icon: Icons.schedule_rounded,
+                color: BeaconColors.forest,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 22),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: SectionHeading(
-            'Trip detail',
-            action:
-                trip == null ? '0 trips' : '${trip.distanceMeters.round()} m',
+        const SizedBox(height: 18),
+        Container(
+          height: 202,
+          clipBehavior: Clip.hardEdge,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE5EBDE),
+            border: Border.all(color: BeaconColors.line),
+            borderRadius: BorderRadius.circular(10),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: SurfacePanel(
-            child: trip == null
-                ? const Padding(
-                    padding: EdgeInsets.all(18),
-                    child: Text(
-                      'No movement trip has been recorded yet. Start tracking from the Today screen.',
-                      style: TextStyle(color: BeaconColors.muted),
-                    ),
-                  )
-                : Column(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _HistoryMapPainter(trip: trip),
+                ),
+              ),
+              Positioned(
+                left: 14,
+                top: 13,
+                child: _MapTag(
+                  icon: trip == null
+                      ? Icons.route_outlined
+                      : Icons.navigation_rounded,
+                  text: trip == null ? 'NO ROUTE' : 'ROUTE SNAPSHOT',
+                ),
+              ),
+              Positioned(
+                left: 16,
+                bottom: 14,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.94),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _formatDate(trip.startedAt),
-                                  style: const TextStyle(
-                                    color: BeaconColors.muted,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${(trip.distanceMeters / 1000).toStringAsFixed(1)} km',
-                                  style: const TextStyle(
-                                    color: BeaconColors.ink,
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: BeaconColors.lime.withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              _formatDuration(trip.startedAt, trip.endedAt),
-                              style: const TextStyle(
-                                color: BeaconColors.ink,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      PlaceListTile(
-                        name: 'Trip started',
-                        detail:
-                            '${_formatTime(trip.startedAt)} · ${(trip.distanceMeters / 1000).toStringAsFixed(1)} km',
-                        time: _formatTime(trip.startedAt),
-                        icon: Icons.my_location,
-                        color: BeaconColors.blue,
-                      ),
-                      const Divider(height: 1, color: BeaconColors.line),
-                      PlaceListTile(
-                        name: 'Movement active',
-                        detail:
-                            '${trip.averageSpeedKmh.toStringAsFixed(1)} km/h average',
-                        time: _formatTime(trip.endedAt),
-                        icon: Icons.directions_run,
+                      const Icon(
+                        Icons.route_rounded,
+                        size: 15,
                         color: BeaconColors.coral,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        trip == null
+                            ? 'No route recorded'
+                            : '${(trip.distanceMeters / 1000).toStringAsFixed(1)} km · ${trip.points.length} points',
+                        style: const TextStyle(
+                          color: BeaconColors.ink,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                   ),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 22),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: SectionHeading(
-            'Recent trips',
-            action: trips.isEmpty ? '0' : '${trips.length}',
-          ),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Trip detail',
+                style: TextStyle(
+                  color: BeaconColors.ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Text(
+              trip == null
+                  ? 'No trip selected'
+                  : '${trip.distanceMeters.round()} m',
+              style: const TextStyle(
+                color: BeaconColors.forest,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
-        if (trips.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: SurfacePanel(
-              child: Column(
-                children: List.generate(trips.length, (index) {
-                  final item = trips[index];
-                  final selected = index == _selectedTripIndex;
-                  return InkWell(
-                    onTap: () => setState(() => _selectedTripIndex = index),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? BeaconColors.ink.withValues(alpha: 0.04)
-                            : null,
-                        borderRadius: BorderRadius.circular(8),
+        const SizedBox(height: 10),
+        SurfacePanel(
+          padding: 14,
+          child: trip == null
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.route_outlined, color: BeaconColors.blue),
+                      SizedBox(width: 11),
+                      Expanded(
+                        child: Text(
+                          'No trip for this day. Choose another date or start tracking from Today.',
+                          style: TextStyle(
+                            color: BeaconColors.muted,
+                            height: 1.35,
+                          ),
+                        ),
                       ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: BeaconColors.coral.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.route_outlined,
-                              color: BeaconColors.coral,
-                            ),
+                    ],
+                  ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE7EEE9),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.name?.trim().isNotEmpty == true
-                                      ? item.name!.trim()
-                                      : '${item.startedAt.day}/${item.startedAt.month} · ${_formatTime(item.startedAt)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                          child: const Icon(
+                            Icons.route_rounded,
+                            color: BeaconColors.forest,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                trip.name?.trim().isNotEmpty == true
+                                    ? trip.name!.trim()
+                                    : 'Recorded trip',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: BeaconColors.ink,
+                                  fontWeight: FontWeight.w800,
                                 ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  '${(item.distanceMeters / 1000).toStringAsFixed(1)} km · ${item.averageSpeedKmh.toStringAsFixed(1)} km/h',
-                                  style: const TextStyle(
-                                    color: BeaconColors.muted,
-                                    fontSize: 12,
-                                  ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${_formatDate(trip.startedAt)} · ${_formatTime(trip.startedAt)} to ${_formatTime(trip.endedAt)}',
+                                style: const TextStyle(
+                                  color: BeaconColors.muted,
+                                  fontSize: 11,
                                 ),
-                              ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _TripMetric(
+                            label: 'DISTANCE',
+                            value:
+                                '${(trip.distanceMeters / 1000).toStringAsFixed(1)} km',
+                            color: BeaconColors.blue,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _TripMetric(
+                            label: 'DURATION',
+                            value:
+                                _formatTotalDuration(trip.totalMinutes.round()),
+                            color: BeaconColors.coral,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _TripMetric(
+                            label: 'AVG SPEED',
+                            value:
+                                '${trip.averageSpeedKmh.toStringAsFixed(1)} km/h',
+                            color: BeaconColors.forest,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, color: BeaconColors.line),
+                    const SizedBox(height: 4),
+                    PlaceListTile(
+                      name: 'Trip started',
+                      detail:
+                          '${_formatTime(trip.startedAt)} · ${(trip.distanceMeters / 1000).toStringAsFixed(1)} km',
+                      time: _formatTime(trip.startedAt),
+                      icon: Icons.my_location_rounded,
+                      color: BeaconColors.blue,
+                    ),
+                    const Divider(height: 1, color: BeaconColors.line),
+                    PlaceListTile(
+                      name: 'Movement active',
+                      detail:
+                          '${trip.averageSpeedKmh.toStringAsFixed(1)} km/h average',
+                      time: _formatTime(trip.endedAt),
+                      icon: Icons.directions_walk_rounded,
+                      color: BeaconColors.coral,
+                    ),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Recent trips',
+                style: TextStyle(
+                  color: BeaconColors.ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE7EEE9),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '${trips.length}',
+                style: const TextStyle(
+                  color: BeaconColors.forest,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        if (trips.isNotEmpty)
+          SurfacePanel(
+            padding: 12,
+            child: Column(
+              children: List.generate(trips.length, (index) {
+                final item = trips[index];
+                final selected = index == _selectedTripIndex;
+                final accent = switch (index % 3) {
+                  0 => BeaconColors.blue,
+                  1 => BeaconColors.coral,
+                  _ => BeaconColors.forest,
+                };
+                return Column(
+                  children: [
+                    if (index > 0)
+                      const Divider(height: 1, color: BeaconColors.line),
+                    InkWell(
+                      onTap: () => setState(() => _selectedTripIndex = index),
+                      borderRadius: BorderRadius.circular(7),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 3,
+                          vertical: 11,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: accent.withValues(
+                                  alpha: selected ? 0.2 : 0.12,
+                                ),
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              child: Icon(
+                                Icons.route_rounded,
+                                color: accent,
+                                size: 20,
+                              ),
                             ),
-                          ),
-                          Icon(
-                            selected ? Icons.check_circle : Icons.chevron_right,
-                            color: selected
-                                ? BeaconColors.ink
-                                : BeaconColors.muted,
-                          ),
-                        ],
+                            const SizedBox(width: 11),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.name?.trim().isNotEmpty == true
+                                        ? item.name!.trim()
+                                        : '${item.startedAt.day}/${item.startedAt.month} · ${_formatTime(item.startedAt)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: BeaconColors.ink,
+                                      fontWeight: selected
+                                          ? FontWeight.w800
+                                          : FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${(item.distanceMeters / 1000).toStringAsFixed(1)} km · ${item.averageSpeedKmh.toStringAsFixed(1)} km/h average',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: BeaconColors.muted,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              selected
+                                  ? Icons.check_circle_rounded
+                                  : Icons.chevron_right_rounded,
+                              color: selected ? accent : BeaconColors.muted,
+                              size: 20,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  );
-                }),
-              ),
+                  ],
+                );
+              }),
             ),
           ),
         const SizedBox(height: 14),
@@ -340,6 +511,164 @@ class _ActivityPageState extends State<ActivityPage> {
   }
 }
 
+class _TripMetric extends StatelessWidget {
+  const _TripMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 62),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: BeaconColors.muted,
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryDayButton extends StatelessWidget {
+  const _HistoryDayButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(7),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          decoration: BoxDecoration(
+            color: selected ? BeaconColors.forest : Colors.white,
+            border: Border.all(
+              color: selected ? BeaconColors.forest : BeaconColors.line,
+            ),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                const Icon(Icons.check_rounded,
+                    size: 15, color: BeaconColors.lime),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : BeaconColors.ink,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HistoryMetric extends StatelessWidget {
+  const _HistoryMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 94),
+      padding: const EdgeInsets.fromLTRB(11, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: BeaconColors.line),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Icon(icon, size: 18, color: color),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: BeaconColors.ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(
+              color: BeaconColors.muted,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MapTag extends StatelessWidget {
   const _MapTag({required this.icon, required this.text});
 
@@ -350,7 +679,7 @@ class _MapTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
+        color: BeaconColors.forest,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Padding(
@@ -358,12 +687,12 @@ class _MapTag extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: BeaconColors.ink),
+            Icon(icon, size: 14, color: BeaconColors.lime),
             const SizedBox(width: 5),
             Text(
               text,
               style: const TextStyle(
-                color: BeaconColors.ink,
+                color: Colors.white,
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
               ),
@@ -382,11 +711,12 @@ class _HistoryMapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final blockPaint = Paint()..color = const Color(0xFFD2DDCC);
+    final blockPaint = Paint()..color = const Color(0xFFD4DFD4);
     final roadPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.85)
-      ..strokeWidth = 8
+      ..color = Colors.white.withValues(alpha: 0.92)
+      ..strokeWidth = 10
       ..style = PaintingStyle.stroke;
+    final parkPaint = Paint()..color = const Color(0xFFB7CFB1);
     final routePaint = Paint()
       ..color = BeaconColors.coral
       ..strokeWidth = 4
@@ -409,6 +739,12 @@ class _HistoryMapPainter extends CustomPainter {
         );
       }
     }
+
+    canvas.drawCircle(
+      Offset(size.width * 0.81, size.height * 0.24),
+      size.height * 0.13,
+      parkPaint,
+    );
 
     final road = Path()
       ..moveTo(size.width * 0.1, size.height * 0.67)

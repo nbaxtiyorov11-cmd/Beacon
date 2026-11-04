@@ -8,12 +8,16 @@ class HomePage extends StatelessWidget {
     required this.trackingEnabled,
     required this.onTrackingChanged,
     required this.userName,
+    required this.onOpenChats,
     required this.onOpenProfile,
     required this.onOpenNotifications,
     required this.onOpenEmergency,
     required this.trips,
     required this.liveTrackingDistanceMeters,
     required this.trackingStartedAt,
+    this.trackingSessionActive = false,
+    this.trackingDuration = Duration.zero,
+    this.onEndTrip,
     this.pendingNotificationCount = 0,
     this.locationLabel,
     super.key,
@@ -22,12 +26,16 @@ class HomePage extends StatelessWidget {
   final bool trackingEnabled;
   final ValueChanged<bool> onTrackingChanged;
   final String? userName;
+  final VoidCallback onOpenChats;
   final VoidCallback onOpenProfile;
   final VoidCallback onOpenNotifications;
   final VoidCallback onOpenEmergency;
   final List<TripEntry> trips;
   final double liveTrackingDistanceMeters;
   final DateTime? trackingStartedAt;
+  final bool trackingSessionActive;
+  final Duration trackingDuration;
+  final VoidCallback? onEndTrip;
   final int pendingNotificationCount;
   final String? locationLabel;
 
@@ -42,19 +50,17 @@ class HomePage extends StatelessWidget {
           0,
           (total, trip) => total + trip.distanceMeters,
         ) +
-        (trackingEnabled ? liveTrackingDistanceMeters : 0);
+        (trackingSessionActive ? liveTrackingDistanceMeters : 0);
     final todayDuration = Duration(
           minutes: todayTrips.fold<int>(
             0,
             (total, trip) => total + trip.totalMinutes.round(),
           ),
         ) +
-        (trackingEnabled && trackingStartedAt != null
-            ? now.difference(trackingStartedAt!)
-            : Duration.zero);
-    final todayTripCount = todayTrips.length + (trackingEnabled ? 1 : 0);
+        (trackingSessionActive ? trackingDuration : Duration.zero);
+    final todayTripCount = todayTrips.length + (trackingSessionActive ? 1 : 0);
     final weeklyDistance = _distancesForDays(trips, now, 7);
-    if (trackingEnabled && weeklyDistance.isNotEmpty) {
+    if (trackingSessionActive && weeklyDistance.isNotEmpty) {
       weeklyDistance[weeklyDistance.length - 1] += liveTrackingDistanceMeters;
     }
     final currentWeekTotal =
@@ -74,108 +80,160 @@ class HomePage extends StatelessWidget {
             border: Border.all(color: BeaconColors.line),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: BeaconColors.ink,
-                  borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            height: 46,
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Chats',
+                  style: IconButton.styleFrom(
+                    foregroundColor: BeaconColors.ink,
+                  ),
+                  onPressed: onOpenChats,
+                  icon: const Icon(Icons.forum_rounded),
                 ),
-                child:
-                    const Icon(Icons.radar, color: BeaconColors.lime, size: 21),
-              ),
-              const SizedBox(width: 10),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'BEACON',
-                    style: TextStyle(
-                      color: BeaconColors.ink,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'MOVEMENT JOURNAL',
-                    style: TextStyle(
-                      color: BeaconColors.muted,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Notifications',
-                style: IconButton.styleFrom(foregroundColor: BeaconColors.ink),
-                onPressed: onOpenNotifications,
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Icon(Icons.notifications_none_rounded),
-                    if (pendingNotificationCount > 0)
-                      Positioned(
-                        right: -7,
-                        top: -6,
-                        child: Container(
-                          key: const ValueKey('pending-notification-count'),
-                          constraints: const BoxConstraints(
-                            minWidth: 17,
-                            minHeight: 17,
+                const Expanded(
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: BeaconColors.ink,
+                            borderRadius: BorderRadius.all(Radius.circular(8)),
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          decoration: const BoxDecoration(
-                            color: BeaconColors.coral,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            pendingNotificationCount > 99
-                                ? '99+'
-                                : '$pendingNotificationCount',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              height: 1,
-                              fontWeight: FontWeight.w800,
+                          child: SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: Icon(
+                              Icons.radar,
+                              color: BeaconColors.lime,
+                              size: 21,
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Your profile',
-                onPressed: onOpenProfile,
-                icon: CircleAvatar(
-                  radius: 17,
-                  backgroundColor: BeaconColors.lime,
-                  foregroundColor: BeaconColors.ink,
-                  child: Text(
-                    (userName?.trim().isNotEmpty == true
-                            ? userName!.trim()[0]
-                            : 'A')
-                        .toUpperCase(),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                        SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'BEACON',
+                              style: TextStyle(
+                                color: BeaconColors.ink,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'MOVEMENT JOURNAL',
+                              style: TextStyle(
+                                color: BeaconColors.muted,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Notifications',
+                      style: IconButton.styleFrom(
+                        foregroundColor: BeaconColors.ink,
+                      ),
+                      onPressed: onOpenNotifications,
+                      icon: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          const Icon(Icons.notifications_none_rounded),
+                          if (pendingNotificationCount > 0)
+                            Positioned(
+                              right: -7,
+                              top: -6,
+                              child: Container(
+                                key: const ValueKey(
+                                    'pending-notification-count'),
+                                constraints: const BoxConstraints(
+                                  minWidth: 17,
+                                  minHeight: 17,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                decoration: const BoxDecoration(
+                                  color: BeaconColors.coral,
+                                  shape: BoxShape.circle,
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  pendingNotificationCount > 99
+                                      ? '99+'
+                                      : '$pendingNotificationCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    height: 1,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Your profile',
+                      onPressed: onOpenProfile,
+                      icon: CircleAvatar(
+                        radius: 17,
+                        backgroundColor: BeaconColors.lime,
+                        foregroundColor: BeaconColors.ink,
+                        child: Text(
+                          (userName?.trim().isNotEmpty == true
+                                  ? userName!.trim()[0]
+                                  : 'A')
+                              .toUpperCase(),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 21),
-        Text(
-          _formatDateLabel(now).toUpperCase(),
-          style: const TextStyle(
-            color: BeaconColors.muted,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE7EEE9),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.calendar_today_rounded,
+                size: 13,
+                color: BeaconColors.forest,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _formatDateLabel(now).toUpperCase(),
+                style: const TextStyle(
+                  color: BeaconColors.forest,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 5),
@@ -183,17 +241,25 @@ class HomePage extends StatelessWidget {
           '${_greeting(now)}, ${_firstName(userName)}.',
           style: const TextStyle(
             color: BeaconColors.ink,
-            fontSize: 30,
-            fontWeight: FontWeight.w700,
+            fontSize: 31,
+            fontWeight: FontWeight.w800,
           ),
+        ),
+        const SizedBox(height: 3),
+        const Text(
+          'Your movement, at a glance.',
+          style: TextStyle(color: BeaconColors.muted, fontSize: 13),
         ),
         const SizedBox(height: 16),
         _TrackingPanel(
           trackingEnabled: trackingEnabled,
+          trackingSessionActive: trackingSessionActive,
           onTrackingChanged: onTrackingChanged,
+          onEndTrip: onEndTrip,
           locationLabel: locationLabel,
           distanceMeters: liveTrackingDistanceMeters,
           trackingStartedAt: trackingStartedAt,
+          trackingDuration: trackingDuration,
         ),
         const SizedBox(height: 12),
         Row(
@@ -239,12 +305,19 @@ class HomePage extends StatelessWidget {
                 ),
               ),
             ),
-            Text(
-              '${(currentWeekTotal / 1000).toStringAsFixed(1)} km',
-              style: const TextStyle(
-                color: BeaconColors.forest,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE7EEE9),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '${(currentWeekTotal / 1000).toStringAsFixed(1)} km',
+                style: const TextStyle(
+                  color: BeaconColors.forest,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -259,6 +332,20 @@ class HomePage extends StatelessWidget {
         const SizedBox(height: 25),
         Row(
           children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: BeaconColors.coral.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(
+                Icons.route_rounded,
+                color: BeaconColors.coral,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
             const Expanded(
               child: Text(
                 'Today’s movement',
@@ -271,7 +358,11 @@ class HomePage extends StatelessWidget {
             ),
             Text(
               '$todayTripCount ${todayTripCount == 1 ? 'trip' : 'trips'}',
-              style: const TextStyle(color: BeaconColors.muted, fontSize: 12),
+              style: const TextStyle(
+                color: BeaconColors.forest,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -339,90 +430,204 @@ class HomePage extends StatelessWidget {
 class _TrackingPanel extends StatelessWidget {
   const _TrackingPanel({
     required this.trackingEnabled,
+    required this.trackingSessionActive,
     required this.onTrackingChanged,
+    required this.onEndTrip,
     required this.distanceMeters,
     required this.trackingStartedAt,
+    required this.trackingDuration,
     this.locationLabel,
   });
 
   final bool trackingEnabled;
+  final bool trackingSessionActive;
   final ValueChanged<bool> onTrackingChanged;
+  final VoidCallback? onEndTrip;
   final String? locationLabel;
   final double distanceMeters;
   final DateTime? trackingStartedAt;
+  final Duration trackingDuration;
 
   @override
   Widget build(BuildContext context) {
-    final duration = trackingStartedAt == null
-        ? Duration.zero
-        : DateTime.now().difference(trackingStartedAt!);
+    final duration = trackingDuration == Duration.zero &&
+            trackingEnabled &&
+            trackingStartedAt != null
+        ? DateTime.now().difference(trackingStartedAt!)
+        : trackingDuration;
+    final statusLabel = trackingEnabled ? 'TRACKING LIVE' : 'TRACKING PAUSED';
     return Container(
       decoration: BoxDecoration(
-        color: BeaconColors.ink,
-        borderRadius: BorderRadius.circular(9),
+        color: trackingEnabled ? BeaconColors.ink : BeaconColors.forest,
+        borderRadius: BorderRadius.circular(10),
       ),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.fromLTRB(17, 16, 17, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.circle,
-                  size: 9,
-                  color:
-                      trackingEnabled ? BeaconColors.lime : BeaconColors.coral),
-              const SizedBox(width: 7),
-              Text(
-                trackingEnabled ? 'TRACKING LIVE' : 'TRACKING PAUSED',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(
+                  color: trackingEnabled
+                      ? BeaconColors.lime.withValues(alpha: 0.16)
+                      : Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      trackingEnabled
+                          ? Icons.radar_rounded
+                          : Icons.pause_circle_outline_rounded,
+                      size: 14,
+                      color: trackingEnabled
+                          ? BeaconColors.lime
+                          : const Color(0xFFD8E1DB),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      statusLabel,
+                      style: TextStyle(
+                        color: trackingEnabled
+                            ? BeaconColors.lime
+                            : const Color(0xFFD8E1DB),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const Spacer(),
               Text(
                 _formatDateLabel(DateTime.now()),
-                style: const TextStyle(color: Color(0xFFB8C7BD), fontSize: 11),
+                style: const TextStyle(color: Color(0xFFCFD9D2), fontSize: 11),
               ),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           Text(
-            trackingEnabled
+            trackingSessionActive
                 ? _formatDistance(distanceMeters)
                 : 'Ready when you are',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 25,
-              fontWeight: FontWeight.w700,
+              fontSize: 27,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            trackingEnabled
-                ? '${_formatDuration(duration)} active · ${locationLabel ?? 'Waiting for GPS'}'
+            trackingSessionActive
+                ? trackingEnabled
+                    ? '${_formatDuration(duration)} active · ${locationLabel ?? 'Waiting for GPS'}'
+                    : '${_formatDuration(duration)} active · Trip paused'
                 : 'Movement recording is paused',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Color(0xFFB8C7BD), fontSize: 12),
+            style: const TextStyle(color: Color(0xFFCFD9D2), fontSize: 12),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            height: 38,
-            child: FilledButton.icon(
-              onPressed: () => onTrackingChanged(!trackingEnabled),
-              style: FilledButton.styleFrom(
-                backgroundColor: BeaconColors.lime,
-                foregroundColor: BeaconColors.ink,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-              ),
-              icon: Icon(trackingEnabled ? Icons.pause : Icons.play_arrow,
-                  size: 17),
-              label:
-                  Text(trackingEnabled ? 'Pause tracking' : 'Start tracking'),
+          if (trackingSessionActive && onEndTrip != null) ...[
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final primaryAction = SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tracking-session-action'),
+                    onPressed: () => onTrackingChanged(!trackingEnabled),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: BeaconColors.lime,
+                      foregroundColor: BeaconColors.ink,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    icon: Icon(
+                      trackingEnabled
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      size: 19,
+                    ),
+                    label: Text(
+                      trackingEnabled ? 'Pause trip' : 'Continue trip',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                );
+                final endAction = SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('end-trip-action'),
+                    onPressed: onEndTrip,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFFFA092),
+                      side: const BorderSide(color: Color(0xFFB9685F)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                    label: const Text('End trip'),
+                  ),
+                );
+
+                if (constraints.maxWidth < 280) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      primaryAction,
+                      const SizedBox(height: 9),
+                      endAction,
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(flex: 6, child: primaryAction),
+                    const SizedBox(width: 9),
+                    Expanded(flex: 4, child: endAction),
+                  ],
+                );
+              },
             ),
-          ),
+          ] else
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton.icon(
+                onPressed: () => onTrackingChanged(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: BeaconColors.lime,
+                  foregroundColor: BeaconColors.ink,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                label: const Text('Start tracking'),
+              ),
+            ),
         ],
       ),
     );
@@ -445,26 +650,34 @@ class _TodayMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 84),
-      padding: const EdgeInsets.fromLTRB(10, 11, 8, 10),
+      constraints: const BoxConstraints(minHeight: 94),
+      padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: BeaconColors.line),
+        color: tint.withValues(alpha: 0.1),
+        border: Border.all(color: tint.withValues(alpha: 0.2)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 17, color: tint),
-          const SizedBox(height: 9),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.75),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: tint),
+          ),
+          const SizedBox(height: 8),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(value,
                 style: const TextStyle(
                   color: BeaconColors.ink,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
                 )),
           ),
           const SizedBox(height: 2),
@@ -500,6 +713,7 @@ class _WeeklyMovement extends StatelessWidget {
     final comparison = previousTotal == 0
         ? null
         : ((currentTotal - previousTotal) / previousTotal * 100).round();
+    final peakValue = peak / 1000;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(15, 15, 15, 12),
@@ -510,6 +724,31 @@ class _WeeklyMovement extends StatelessWidget {
       ),
       child: Column(
         children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Daily distance',
+                  style: TextStyle(
+                    color: BeaconColors.ink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                peakValue == 0
+                    ? 'No trips yet'
+                    : 'Peak ${peakValue.toStringAsFixed(1)} km',
+                style: const TextStyle(
+                  color: BeaconColors.muted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           SizedBox(
             height: 90,
             child: Row(
@@ -526,13 +765,16 @@ class _WeeklyMovement extends StatelessWidget {
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 250),
                               height:
-                                  peak == 0 ? 3 : 6 + values[index] / peak * 55,
-                              width: 18,
+                                  peak == 0 ? 3 : 7 + values[index] / peak * 56,
+                              width: 19,
                               decoration: BoxDecoration(
-                                color: index == values.length - 1
-                                    ? BeaconColors.coral
-                                    : BeaconColors.blue.withValues(alpha: 0.72),
-                                borderRadius: BorderRadius.circular(4),
+                                color: _weeklyBarColor(
+                                  index,
+                                  values[index],
+                                  peak,
+                                  index == values.length - 1,
+                                ),
+                                borderRadius: BorderRadius.circular(5),
                               ),
                             ),
                           ),
@@ -575,6 +817,22 @@ class _WeeklyMovement extends StatelessWidget {
       ),
     );
   }
+}
+
+Color _weeklyBarColor(
+  int index,
+  double value,
+  double peak,
+  bool isToday,
+) {
+  if (peak == 0) return const Color(0xFFDCE4DD);
+  if (isToday) return BeaconColors.coral;
+  if (value == peak) return BeaconColors.forest;
+  return switch (index % 3) {
+    0 => BeaconColors.blue,
+    1 => const Color(0xFF9BB57A),
+    _ => const Color(0xFF8DA8A1),
+  };
 }
 
 class _MovementRow extends StatelessWidget {

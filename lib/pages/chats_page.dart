@@ -94,12 +94,61 @@ class _ChatsPageState extends State<ChatsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Messages',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+        backgroundColor: BeaconColors.paper,
+        scrolledUnderElevation: 0,
+        title: const Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Color(0xFFE7EEE9),
+                borderRadius: BorderRadius.all(Radius.circular(9)),
+              ),
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.forum_rounded,
+                  color: BeaconColors.forest,
+                  size: 19,
+                ),
+              ),
+            ),
+            SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'YOUR CIRCLE',
+                  style: TextStyle(
+                    color: BeaconColors.forest,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Messages',
+                  style: TextStyle(
+                    color: BeaconColors.ink,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Find a Beacon member',
             onPressed: _lookingUpPerson ? null : _findPerson,
+            style: IconButton.styleFrom(
+              foregroundColor: BeaconColors.forest,
+              backgroundColor: const Color(0xFFE7EEE9),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(9),
+              ),
+            ),
             icon: _lookingUpPerson
                 ? const SizedBox.square(
                     dimension: 19,
@@ -126,28 +175,43 @@ class _ChatsPageState extends State<ChatsPage> {
             return _EmptyChats(onFindPerson: _findPerson);
           }
           return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
             itemCount: conversations.length + 1,
             separatorBuilder: (_, index) => index == 0
-                ? const SizedBox(height: 12)
-                : const Divider(
-                    height: 1, indent: 72, color: BeaconColors.line),
+                ? const SizedBox(height: 10)
+                : const SizedBox(height: 6),
             itemBuilder: (context, index) {
               if (index == 0) {
                 return Row(
                   children: [
                     const Expanded(
                       child: Text(
-                        'RECENT CONVERSATIONS',
+                        'Recent conversations',
                         style: TextStyle(
-                          color: BeaconColors.muted,
-                          fontSize: 10,
+                          color: BeaconColors.ink,
+                          fontSize: 17,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
-                    Text('${conversations.length}',
-                        style: const TextStyle(color: BeaconColors.muted)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE7EEE9),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${conversations.length}',
+                        style: const TextStyle(
+                          color: BeaconColors.forest,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
                   ],
                 );
               }
@@ -158,6 +222,7 @@ class _ChatsPageState extends State<ChatsPage> {
               return _ConversationTile(
                 name: name,
                 photoUrl: other['photoURL'] as String? ?? '',
+                accent: _chatAccents[(index - 1) % _chatAccents.length],
                 lastMessage: conversation.lastMessage.isEmpty
                     ? 'Say hello to start chatting'
                     : conversation.lastMessage,
@@ -187,14 +252,14 @@ class _EmptyChats extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 72,
-              height: 72,
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
-                color: const Color(0xFFE8EEDB),
-                borderRadius: BorderRadius.circular(24),
+                color: const Color(0xFFE7EEE9),
+                borderRadius: BorderRadius.circular(18),
               ),
-              child: const Icon(Icons.forum_outlined,
-                  color: BeaconColors.forest, size: 31),
+              child: const Icon(Icons.forum_rounded,
+                  color: BeaconColors.forest, size: 28),
             ),
             const SizedBox(height: 18),
             const Text(
@@ -228,6 +293,7 @@ class _ConversationTile extends StatelessWidget {
   const _ConversationTile({
     required this.name,
     required this.photoUrl,
+    required this.accent,
     required this.lastMessage,
     required this.time,
     required this.unread,
@@ -236,6 +302,7 @@ class _ConversationTile extends StatelessWidget {
 
   final String name;
   final String photoUrl;
+  final Color accent;
   final String lastMessage;
   final String time;
   final bool unread;
@@ -243,67 +310,133 @@ class _ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: 7),
-      leading: _BeaconAvatar(name: name, photoUrl: photoUrl, size: 52),
-      title: Text(name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-              fontWeight: unread ? FontWeight.w800 : FontWeight.w600)),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Text(lastMessage,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                color: unread ? BeaconColors.ink : BeaconColors.muted,
-                fontWeight: unread ? FontWeight.w600 : FontWeight.normal)),
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(11, 12, 12, 12),
+          child: Row(
+            children: [
+              _BeaconAvatar(
+                name: name,
+                photoUrl: photoUrl,
+                size: 50,
+                accent: accent,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: BeaconColors.ink,
+                        fontWeight:
+                            unread ? FontWeight.w800 : FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: unread ? BeaconColors.forest : BeaconColors.muted,
+                        fontSize: 12,
+                        fontWeight:
+                            unread ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    time,
+                    style: const TextStyle(
+                      color: BeaconColors.muted,
+                      fontSize: 10,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  if (unread)
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: BeaconColors.coral,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(time,
-              style: const TextStyle(color: BeaconColors.muted, fontSize: 11)),
-          const SizedBox(height: 7),
-          if (unread)
-            Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                    color: BeaconColors.coral, shape: BoxShape.circle)),
-        ],
-      ),
-      onTap: onTap,
     );
   }
 }
 
 class _BeaconAvatar extends StatelessWidget {
   const _BeaconAvatar(
-      {required this.name, required this.photoUrl, required this.size});
+  {required this.name,
+  required this.photoUrl,
+  required this.size,
+  required this.accent});
 
   final String name;
   final String photoUrl;
   final double size;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     final initial = name.trim().isEmpty ? 'B' : name.trim()[0].toUpperCase();
-    return CircleAvatar(
-      radius: size / 2,
-      backgroundColor: BeaconColors.lime,
-      foregroundColor: BeaconColors.ink,
-      backgroundImage: photoUrl.isEmpty ? null : NetworkImage(photoUrl),
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(15),
+        image: photoUrl.isEmpty
+            ? null
+            : DecorationImage(
+                image: NetworkImage(photoUrl),
+                fit: BoxFit.cover,
+              ),
+      ),
+      alignment: Alignment.center,
       child: photoUrl.isEmpty
-          ? Text(initial,
-              style:
-                  TextStyle(fontSize: size * 0.36, fontWeight: FontWeight.w700))
+          ? Text(
+              initial,
+              style: TextStyle(
+                color: accent,
+                fontSize: size * 0.36,
+                fontWeight: FontWeight.w800,
+              ),
+            )
           : null,
     );
   }
 }
+
+const _chatAccents = [
+  BeaconColors.blue,
+  BeaconColors.coral,
+  BeaconColors.forest,
+  Color(0xFF8F9D61),
+];
 
 class _FindPersonDialog extends StatefulWidget {
   const _FindPersonDialog();

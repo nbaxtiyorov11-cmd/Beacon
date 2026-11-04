@@ -193,7 +193,10 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
         ? 'Beacon member'
         : widget.otherProfile.displayName.trim();
     return Scaffold(
+      backgroundColor: BeaconColors.paper,
       appBar: AppBar(
+        backgroundColor: BeaconColors.paper,
+        scrolledUnderElevation: 0,
         titleSpacing: 0,
         title: Row(
           children: [
@@ -204,14 +207,31 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
-                  const Text('Beacon member',
-                      style:
-                          TextStyle(fontSize: 11, color: BeaconColors.muted)),
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: BeaconColors.ink,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Row(
+                    children: [
+                      Icon(Icons.lock_rounded,
+                          color: BeaconColors.forest, size: 10),
+                      SizedBox(width: 4),
+                      Text(
+                        'Private conversation',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: BeaconColors.muted,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -337,17 +357,18 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: BeaconColors.paper,
       child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const Divider(height: 1, color: BeaconColors.line),
             if (replyingTo != null)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(16, 9, 10, 9),
-                color: BeaconColors.paper,
+                padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+                color: Colors.white,
                 child: Row(
                   children: [
                     Container(width: 3, height: 34, color: BeaconColors.coral),
@@ -392,13 +413,16 @@ class _Composer extends StatelessWidget {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
+              padding: const EdgeInsets.fromLTRB(10, 9, 10, 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton(
                     tooltip: emojiTrayOpen ? 'Hide emojis' : 'Add emoji',
                     onPressed: onToggleEmojiTray,
+                    style: IconButton.styleFrom(
+                      foregroundColor: BeaconColors.forest,
+                    ),
                     icon: Icon(
                         emojiTrayOpen
                             ? Icons.keyboard_rounded
@@ -420,12 +444,27 @@ class _Composer extends StatelessWidget {
                           hintText: 'Write a message',
                           counterText: '',
                           filled: true,
-                          fillColor: BeaconColors.paper,
+                          fillColor: Colors.white,
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 12),
                           border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(22),
-                              borderSide: BorderSide.none),
+                            borderRadius: BorderRadius.circular(9),
+                            borderSide: const BorderSide(
+                              color: BeaconColors.line,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(9),
+                            borderSide: const BorderSide(
+                              color: BeaconColors.line,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(9),
+                            borderSide: const BorderSide(
+                              color: BeaconColors.forest,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -435,8 +474,9 @@ class _Composer extends StatelessWidget {
                     tooltip: 'Send message',
                     onPressed: onSend,
                     style: IconButton.styleFrom(
-                        backgroundColor: BeaconColors.ink,
-                        foregroundColor: BeaconColors.lime),
+                      backgroundColor: BeaconColors.forest,
+                      foregroundColor: Colors.white,
+                    ),
                     icon: const Icon(Icons.arrow_upward_rounded),
                   ),
                 ],
@@ -472,7 +512,7 @@ class _MessageBubble extends StatelessWidget {
         message.createdAt != null &&
         !otherReadAt!.isBefore(message.createdAt!);
     final alignment = own ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final color = own ? BeaconColors.ink : Colors.white;
+    final color = own ? BeaconColors.forest : Colors.white;
     final textColor = own ? Colors.white : BeaconColors.ink;
     final reactions = message.reactions.values.toSet().toList();
     return Align(
@@ -599,13 +639,24 @@ class _FirstMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.waving_hand_rounded,
-                color: BeaconColors.coral, size: 30),
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: BeaconColors.coral.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(
+                Icons.waving_hand_rounded,
+                color: BeaconColors.coral,
+                size: 27,
+              ),
+            ),
             const SizedBox(height: 12),
             Text('Say hello to $name',
                 style: const TextStyle(
                     fontSize: 19,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     color: BeaconColors.ink)),
             const SizedBox(height: 6),
             const Text('Your messages are private to this conversation.',
@@ -628,13 +679,29 @@ class _ChatAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: BeaconColors.lime,
-      foregroundColor: BeaconColors.ink,
-      backgroundImage: photoUrl.isEmpty ? null : NetworkImage(photoUrl),
+    final size = radius * 2;
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE7EEE9),
+        borderRadius: BorderRadius.circular(12),
+        image: photoUrl.isEmpty
+            ? null
+            : DecorationImage(
+                image: NetworkImage(photoUrl),
+                fit: BoxFit.cover,
+              ),
+      ),
       child: photoUrl.isEmpty
-          ? Text(name.trim().isEmpty ? 'B' : name.trim()[0].toUpperCase())
+          ? Text(
+              name.trim().isEmpty ? 'B' : name.trim()[0].toUpperCase(),
+              style: const TextStyle(
+                color: BeaconColors.forest,
+                fontWeight: FontWeight.w800,
+              ),
+            )
           : null,
     );
   }

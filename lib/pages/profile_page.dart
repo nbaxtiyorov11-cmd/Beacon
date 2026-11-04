@@ -132,37 +132,6 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
-  Future<void> _deleteAccount() async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon:
-            const Icon(Icons.warning_amber_rounded, color: BeaconColors.coral),
-        title: const Text('Delete your account?'),
-        content: const Text(
-          'This deletes your Firebase sign-in account. Your Firestore profile, saved trips, family connections, and chats are not automatically erased.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep account'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: BeaconColors.coral),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete account'),
-          ),
-        ],
-      ),
-    );
-    if (shouldDelete != true) return;
-
-    await _runAccountAction(() async {
-      await widget.authService.deleteAccount();
-      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
-    });
-  }
-
   Future<void> _runAccountAction(Future<void> Function() action) async {
     setState(() => _isWorking = true);
     try {
@@ -184,11 +153,47 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        backgroundColor: BeaconColors.paper,
+        scrolledUnderElevation: 0,
+        title: const Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Color(0xFFE7EEE9),
+                borderRadius: BorderRadius.all(Radius.circular(9)),
+              ),
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.person_rounded,
+                  color: BeaconColors.forest,
+                  size: 20,
+                ),
+              ),
+            ),
+            SizedBox(width: 10),
+            Text(
+              'Profile',
+              style: TextStyle(
+                color: BeaconColors.ink,
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Settings',
             onPressed: _isWorking ? null : widget.onOpenSettings,
+            style: IconButton.styleFrom(
+              foregroundColor: BeaconColors.forest,
+              backgroundColor: const Color(0xFFE7EEE9),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(9),
+              ),
+            ),
             icon: const Icon(Icons.tune_rounded),
           ),
         ],
@@ -200,21 +205,26 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: BeaconColors.ink,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Column(
               children: [
                 Row(
                   children: [
-                    CircleAvatar(
-                      radius: 31,
-                      backgroundColor: BeaconColors.lime,
-                      foregroundColor: BeaconColors.ink,
+                    Container(
+                      width: 62,
+                      height: 62,
+                      decoration: BoxDecoration(
+                        color: BeaconColors.lime,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      alignment: Alignment.center,
                       child: Text(
                         _initial,
                         style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
+                          color: BeaconColors.ink,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
@@ -240,6 +250,42 @@ class _ProfilePageState extends State<ProfilePage> {
                               fontSize: 13,
                             ),
                           ),
+                          const SizedBox(height: 7),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: verificationColor.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _emailVerified
+                                      ? Icons.verified_rounded
+                                      : Icons.pending_outlined,
+                                  color: _emailVerified
+                                      ? BeaconColors.lime
+                                      : const Color(0xFFFFB0A3),
+                                  size: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  verificationLabel,
+                                  style: TextStyle(
+                                    color: _emailVerified
+                                        ? BeaconColors.lime
+                                        : const Color(0xFFFFB0A3),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -252,6 +298,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: _ProfileActionButton(
                         label: 'Edit name',
                         icon: Icons.edit_outlined,
+                        primary: true,
                         onPressed: _isWorking ? null : _editDisplayName,
                       ),
                     ),
@@ -260,6 +307,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: _ProfileActionButton(
                         label: 'Settings',
                         icon: Icons.tune_rounded,
+                        primary: false,
                         onPressed: _isWorking ? null : widget.onOpenSettings,
                       ),
                     ),
@@ -302,13 +350,10 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
           const SizedBox(height: 24),
-          const Text(
+          const _ProfileSectionHeading(
             'Account',
-            style: TextStyle(
-              color: BeaconColors.ink,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-            ),
+            icon: Icons.person_outline_rounded,
+            color: BeaconColors.blue,
           ),
           const SizedBox(height: 10),
           _ProfilePanel(
@@ -331,13 +376,10 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
           const SizedBox(height: 22),
-          const Text(
+          const _ProfileSectionHeading(
             'Security',
-            style: TextStyle(
-              color: BeaconColors.ink,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-            ),
+            icon: Icons.shield_outlined,
+            color: BeaconColors.forest,
           ),
           const SizedBox(height: 10),
           _ProfilePanel(
@@ -367,13 +409,10 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
           const SizedBox(height: 22),
-          const Text(
+          const _ProfileSectionHeading(
             'Account access',
-            style: TextStyle(
-              color: BeaconColors.ink,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-            ),
+            icon: Icons.login_rounded,
+            color: BeaconColors.blue,
           ),
           const SizedBox(height: 10),
           _ProfilePanel(
@@ -385,44 +424,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 onTap: _isWorking ? null : _signOut,
               ),
             ],
-          ),
-          const SizedBox(height: 22),
-          const Text(
-            'Danger zone',
-            style: TextStyle(
-              color: BeaconColors.ink,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF0EB),
-              border: Border.all(color: const Color(0xFFF3D3C9)),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Material(
-              color: const Color(0xFFFFF0EB),
-              borderRadius: BorderRadius.circular(8),
-              child: ListTile(
-                leading: const Icon(Icons.delete_outline_rounded,
-                    color: BeaconColors.coral),
-                title: const Text(
-                  'Delete account',
-                  style: TextStyle(
-                    color: BeaconColors.coral,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                subtitle:
-                    const Text('Permanently remove your Firebase account'),
-                trailing:
-                    const Icon(Icons.chevron_right, color: BeaconColors.coral),
-                onTap: _isWorking ? null : _deleteAccount,
-              ),
-            ),
           ),
           const SizedBox(height: 18),
           const Center(
@@ -445,27 +446,84 @@ class _ProfileActionButton extends StatelessWidget {
   const _ProfileActionButton({
     required this.label,
     required this.icon,
+    required this.primary,
     required this.onPressed,
   });
 
   final String label;
   final IconData icon;
+  final bool primary;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 42,
-      child: FilledButton.icon(
-        onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: BeaconColors.lime,
-          foregroundColor: BeaconColors.ink,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: primary
+          ? FilledButton.icon(
+              onPressed: onPressed,
+              style: FilledButton.styleFrom(
+                backgroundColor: BeaconColors.lime,
+                foregroundColor: BeaconColors.ink,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(7),
+                ),
+              ),
+              icon: Icon(icon, size: 17),
+              label: Text(label),
+            )
+          : OutlinedButton.icon(
+              onPressed: onPressed,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Color(0x667F978A)),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(7),
+                ),
+              ),
+              icon: Icon(icon, size: 17),
+              label: Text(label),
+            ),
+    );
+  }
+}
+
+class _ProfileSectionHeading extends StatelessWidget {
+  const _ProfileSectionHeading(
+    this.title, {
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 18, color: color),
         ),
-        icon: Icon(icon, size: 17),
-        label: Text(label),
-      ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(
+            color: BeaconColors.ink,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -486,23 +544,32 @@ class _ProfileMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      constraints: const BoxConstraints(minHeight: 96),
+      padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: BeaconColors.line),
-        borderRadius: BorderRadius.circular(10),
+        color: color.withValues(alpha: 0.1),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(height: 9),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 16),
+          ),
+          const SizedBox(height: 8),
           Text(
             value,
             style: const TextStyle(
               color: BeaconColors.ink,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 3),

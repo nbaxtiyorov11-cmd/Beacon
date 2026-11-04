@@ -103,6 +103,7 @@ class TripService {
   TripEntry? recordTripFromPositions(
     List<Position> positions, {
     String? name,
+    Iterable<int> segmentStartIndices = const [],
   }) {
     if (positions.isEmpty) return null;
 
@@ -137,6 +138,7 @@ class TripService {
     }
 
     final points = <TripLocation>[];
+    final explicitSegmentStarts = segmentStartIndices.toSet();
     final startedAt = validPositions.first.timestamp;
     final endedAt = validPositions.last.timestamp;
     double totalDistance = 0;
@@ -144,6 +146,7 @@ class TripService {
     for (var index = 0; index < validPositions.length; index++) {
       final position = validPositions[index];
       final segmentStart = index == 0 ||
+          explicitSegmentStarts.contains(index) ||
           !samplesAreContinuous(validPositions[index - 1], position);
       points.add(TripLocation(
         latitude: position.latitude,

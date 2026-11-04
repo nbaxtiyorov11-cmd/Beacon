@@ -60,13 +60,19 @@ class MapPage extends StatefulWidget {
   }
 
   static List<List<LatLng>> buildTrackingSegments(
-    Iterable<Position> positions,
+    Iterable<Position> positions, {
+    Iterable<int> segmentStartIndices = const [],
+  }
   ) {
     final segments = <List<LatLng>>[];
+    final explicitSegmentStarts = segmentStartIndices.toSet();
     Position? previous;
+    var index = 0;
     for (final position in positions) {
       final point = LatLng(position.latitude, position.longitude);
-      if (previous == null ||
+      if (index == 0 ||
+          explicitSegmentStarts.contains(index) ||
+          previous == null ||
           !TripService.samplesAreContinuous(previous, position)) {
         segments.add([point]);
       } else {
@@ -78,6 +84,7 @@ class MapPage extends StatefulWidget {
         );
       }
       previous = position;
+      index++;
     }
     return segments;
   }
@@ -134,7 +141,11 @@ class _MapPageState extends State<MapPage> {
     _opened = widget.active;
     if (widget.trackingEnabled) {
       final positions = widget.locationService.trackedPositions;
-      _trackingTraceSegments = MapPage.buildTrackingSegments(positions);
+      _trackingTraceSegments = MapPage.buildTrackingSegments(
+        positions,
+        segmentStartIndices:
+            widget.locationService.trackingSegmentStartIndices,
+      );
       if (positions.isNotEmpty) _lastTracePosition = positions.last;
     }
     _familyContacts =
@@ -149,7 +160,11 @@ class _MapPageState extends State<MapPage> {
         _currentLocation = point;
         if (widget.trackingEnabled) {
           final previous = _lastTracePosition;
+          final positionIndex =
+              widget.locationService.trackedPositions.length - 1;
           if (previous == null ||
+              widget.locationService.trackingSegmentStartIndices
+                  .contains(positionIndex) ||
               !TripService.samplesAreContinuous(previous, position)) {
             _trackingTraceSegments = [
               ..._trackingTraceSegments,
@@ -177,7 +192,11 @@ class _MapPageState extends State<MapPage> {
     super.didUpdateWidget(oldWidget);
     if (widget.trackingEnabled && !oldWidget.trackingEnabled) {
       final positions = widget.locationService.trackedPositions;
-      _trackingTraceSegments = MapPage.buildTrackingSegments(positions);
+      _trackingTraceSegments = MapPage.buildTrackingSegments(
+        positions,
+        segmentStartIndices:
+            widget.locationService.trackingSegmentStartIndices,
+      );
       _lastTracePosition = positions.isEmpty ? null : positions.last;
     } else if (!widget.trackingEnabled && oldWidget.trackingEnabled) {
       _lastTracePosition = null;
