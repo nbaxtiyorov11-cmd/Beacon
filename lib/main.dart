@@ -18,7 +18,7 @@ Future<void> main() async {
   runApp(BeaconApp());
 }
 
-class BeaconApp extends StatelessWidget {
+class BeaconApp extends StatefulWidget {
   BeaconApp({
     super.key,
     AuthService? authService,
@@ -36,16 +36,31 @@ class BeaconApp extends StatelessWidget {
   final FirestoreService firestoreService;
 
   @override
+  State<BeaconApp> createState() => _BeaconAppState();
+}
+
+class _BeaconAppState extends State<BeaconApp> {
+  BeaconThemePreset _themePreset = BeaconThemePreset.active;
+
+  void _updateThemePreset(BeaconThemePreset preset) {
+    if (!mounted) return;
+    setState(() => _themePreset = preset);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final appTheme = BeaconTheme.forPreset(_themePreset);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Beacon',
-      theme: BeaconTheme.light,
+      theme: appTheme,
       home: _SessionGate(
-        authService: authService,
-        locationService: locationService,
-        tripService: tripService,
-        firestoreService: firestoreService,
+        authService: widget.authService,
+        locationService: widget.locationService,
+        tripService: widget.tripService,
+        firestoreService: widget.firestoreService,
+        themePreset: _themePreset,
+        onThemeChanged: _updateThemePreset,
       ),
     );
   }
@@ -57,12 +72,16 @@ class _SessionGate extends StatelessWidget {
     required this.locationService,
     required this.tripService,
     required this.firestoreService,
+    required this.themePreset,
+    required this.onThemeChanged,
   });
 
   final AuthService authService;
   final LocationService locationService;
   final TripService tripService;
   final FirestoreService firestoreService;
+  final BeaconThemePreset themePreset;
+  final ValueChanged<BeaconThemePreset> onThemeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +121,8 @@ class _SessionGate extends StatelessWidget {
           locationService: locationService,
           tripService: tripService,
           firestoreService: firestoreService,
+          themePreset: themePreset,
+          onThemeChanged: onThemeChanged,
         );
       },
     );

@@ -27,6 +27,8 @@ class BeaconShell extends StatefulWidget {
     required this.locationService,
     required this.tripService,
     required this.firestoreService,
+    required this.themePreset,
+    required this.onThemeChanged,
     super.key,
   });
 
@@ -35,6 +37,8 @@ class BeaconShell extends StatefulWidget {
   final LocationService locationService;
   final TripService tripService;
   final FirestoreService firestoreService;
+  final BeaconThemePreset themePreset;
+  final ValueChanged<BeaconThemePreset> onThemeChanged;
 
   @override
   State<BeaconShell> createState() => _BeaconShellState();
@@ -91,6 +95,9 @@ class _BeaconShellState extends State<BeaconShell> {
       _userSettings = settings;
       _trackingEnabled = widget.locationService.trackingEnabled;
     });
+    if (settings.themePreset != widget.themePreset) {
+      widget.onThemeChanged(settings.themePreset);
+    }
     unawaited(_configureMessaging(settings.notifications));
   }
 
@@ -363,8 +370,7 @@ class _BeaconShellState extends State<BeaconShell> {
     final savedTrip = widget.tripService.recordTripFromPositions(
       positions,
       name: _safePlaceContaining(lastPosition)?.name,
-      segmentStartIndices:
-          widget.locationService.trackingSegmentStartIndices,
+      segmentStartIndices: widget.locationService.trackingSegmentStartIndices,
     );
     await widget.locationService.stopTracking();
     _trackingSessionActive = false;
@@ -380,11 +386,8 @@ class _BeaconShellState extends State<BeaconShell> {
   }
 
   void _updateTrackingState(bool enabled) {
-    final nextSettings = UserSettings(
+    final nextSettings = _userSettings.copyWith(
       trackingEnabled: enabled,
-      approximateLocation: _userSettings.approximateLocation,
-      familySharing: _userSettings.familySharing,
-      notifications: _userSettings.notifications,
     );
     _userSettings = nextSettings;
     if (mounted) setState(() => _trackingEnabled = enabled);
@@ -469,11 +472,8 @@ class _BeaconShellState extends State<BeaconShell> {
 
   Future<void> _setFamilySharing(bool enabled) async {
     final previousSettings = _userSettings;
-    final nextSettings = UserSettings(
-      trackingEnabled: _userSettings.trackingEnabled,
-      approximateLocation: _userSettings.approximateLocation,
+    final nextSettings = _userSettings.copyWith(
       familySharing: enabled,
-      notifications: _userSettings.notifications,
     );
     _userSettings = nextSettings;
     try {
@@ -504,20 +504,22 @@ class _BeaconShellState extends State<BeaconShell> {
         builder: (_) => ProfilePage(
           user: widget.user,
           authService: widget.authService,
+          themePreset: widget.themePreset,
           onOpenSettings: _openSettings,
         ),
       ),
     );
   }
 
-  void _openSettings() {
-    Navigator.of(context).push(
+  void _openSettings(BuildContext profileContext) {
+    Navigator.of(profileContext).push(
       MaterialPageRoute<void>(
         builder: (_) => SettingsPage(
           trackingEnabled: _trackingEnabled,
           onTrackingChanged: _setTracking,
           userEmail: widget.user.email,
           userSettings: _userSettings,
+          themePreset: widget.themePreset,
           onUserSettingsChanged: (settings) async {
             final previous = _userSettings;
             _userSettings = settings;
@@ -532,6 +534,9 @@ class _BeaconShellState extends State<BeaconShell> {
             }
             if (previous.notifications != settings.notifications) {
               unawaited(_configureMessaging(settings.notifications));
+            }
+            if (previous.themePreset != settings.themePreset) {
+              widget.onThemeChanged(settings.themePreset);
             }
             if (mounted) setState(() {});
           },
@@ -597,6 +602,7 @@ class _BeaconShellState extends State<BeaconShell> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = BeaconAppTheme.forPreset(widget.themePreset);
     final pages = [
       HomePage(
         trackingEnabled: _trackingEnabled,
@@ -638,63 +644,116 @@ class _BeaconShellState extends State<BeaconShell> {
       ActivityPage(tripService: widget.tripService),
     ];
 
-    return Scaffold(
-      extendBody: _selectedIndex == 2,
-      body: SafeArea(
-        top: _selectedIndex != 2,
-        bottom: _selectedIndex != 2,
-        child: IndexedStack(index: _selectedIndex, children: pages),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-        child: Material(
-          color: BeaconColors.ink,
-          elevation: 8,
-          borderRadius: BorderRadius.circular(30),
-          clipBehavior: Clip.antiAlias,
-          child: NavigationBar(
-            selectedIndex: _selectedIndex,
-            indicatorColor: Colors.transparent,
-            onDestinationSelected: (index) =>
-                setState(() => _selectedIndex = index),
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.near_me_outlined),
-                selectedIcon: _SelectedNavIcon(icon: Icons.near_me),
-                label: 'Today',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.insights_outlined),
-                selectedIcon: _SelectedNavIcon(icon: Icons.insights),
-                label: 'Insights',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.map_outlined),
-                selectedIcon: _SelectedNavIcon(icon: Icons.map),
-                label: 'Map',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.family_restroom_outlined),
-                selectedIcon: _SelectedNavIcon(icon: Icons.family_restroom),
-                label: 'Family',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.route_outlined),
-                selectedIcon: _SelectedNavIcon(icon: Icons.route),
-                label: 'History',
-              ),
-            ],
+    return Container(
+      color: theme.backgroundColor,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.network(
+              theme.backgroundImageUrl,
+              fit: BoxFit.cover,
+              color: theme.backgroundColor.withValues(alpha: 0.12),
+              colorBlendMode: BlendMode.srcOver,
+              errorBuilder: (context, error, stackTrace) => const SizedBox(),
+            ),
           ),
-        ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: theme.backgroundColor.withValues(alpha: 0.45),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              extendBody: _selectedIndex == 2,
+              body: SafeArea(
+                top: _selectedIndex != 2,
+                bottom: _selectedIndex != 2,
+                child: IndexedStack(index: _selectedIndex, children: pages),
+              ),
+              bottomNavigationBar: SafeArea(
+                minimum: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                child: Material(
+                  color: theme.cardColor.withValues(alpha: 0.82),
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(30),
+                  clipBehavior: Clip.antiAlias,
+                  child: NavigationBar(
+                    backgroundColor: theme.cardColor.withValues(alpha: 0.82),
+                    selectedIndex: _selectedIndex,
+                    indicatorColor: Colors.transparent,
+                    onDestinationSelected: (index) =>
+                        setState(() => _selectedIndex = index),
+                    destinations: [
+                      NavigationDestination(
+                        icon: const Icon(Icons.near_me_outlined),
+                        selectedIcon: _SelectedNavIcon(
+                          icon: Icons.near_me,
+                          color: theme.preset == BeaconThemePreset.active
+                              ? BeaconColors.lime
+                              : theme.accentColor,
+                        ),
+                        label: 'Today',
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.insights_outlined),
+                        selectedIcon: _SelectedNavIcon(
+                          icon: Icons.insights,
+                          color: theme.preset == BeaconThemePreset.active
+                              ? BeaconColors.lime
+                              : theme.accentColor,
+                        ),
+                        label: 'Insights',
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.map_outlined),
+                        selectedIcon: _SelectedNavIcon(
+                          icon: Icons.map,
+                          color: theme.preset == BeaconThemePreset.active
+                              ? BeaconColors.lime
+                              : theme.accentColor,
+                        ),
+                        label: 'Map',
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.family_restroom_outlined),
+                        selectedIcon: _SelectedNavIcon(
+                          icon: Icons.family_restroom,
+                          color: theme.preset == BeaconThemePreset.active
+                              ? BeaconColors.lime
+                              : theme.accentColor,
+                        ),
+                        label: 'Family',
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.route_outlined),
+                        selectedIcon: _SelectedNavIcon(
+                          icon: Icons.route,
+                          color: theme.preset == BeaconThemePreset.active
+                              ? BeaconColors.lime
+                              : theme.accentColor,
+                        ),
+                        label: 'History',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _SelectedNavIcon extends StatelessWidget {
-  const _SelectedNavIcon({required this.icon});
+  const _SelectedNavIcon({required this.icon, required this.color});
 
   final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -702,7 +761,7 @@ class _SelectedNavIcon extends StatelessWidget {
       icon,
       key: const ValueKey('selected-nav-icon'),
       size: 22,
-      color: BeaconColors.lime,
+      color: color,
     );
   }
 }

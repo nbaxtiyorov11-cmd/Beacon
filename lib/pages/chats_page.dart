@@ -10,11 +10,13 @@ class ChatsPage extends StatefulWidget {
   const ChatsPage({
     required this.currentUser,
     required this.firestoreService,
+    this.themePreset = BeaconThemePreset.active,
     super.key,
   });
 
   final AuthUser currentUser;
   final FirestoreService firestoreService;
+  final BeaconThemePreset themePreset;
 
   @override
   State<ChatsPage> createState() => _ChatsPageState();
@@ -92,74 +94,97 @@ class _ChatsPageState extends State<ChatsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: BeaconColors.paper,
-        scrolledUnderElevation: 0,
-        title: const Row(
-          children: [
-            DecoratedBox(
+    final theme = BeaconAppTheme.forPreset(widget.themePreset);
+    return Container(
+      color: theme.backgroundColor,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.network(
+              theme.backgroundImageUrl,
+              fit: BoxFit.cover,
+              color: theme.backgroundColor.withValues(alpha: 0.12),
+              colorBlendMode: BlendMode.srcOver,
+              errorBuilder: (context, error, stackTrace) => const SizedBox(),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
               decoration: BoxDecoration(
-                color: Color(0xFFE7EEE9),
-                borderRadius: BorderRadius.all(Radius.circular(9)),
-              ),
-              child: SizedBox(
-                width: 36,
-                height: 36,
-                child: Icon(
-                  Icons.forum_rounded,
-                  color: BeaconColors.forest,
-                  size: 19,
-                ),
+                color: theme.backgroundColor.withValues(alpha: 0.25),
               ),
             ),
-            SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'YOUR CIRCLE',
-                  style: TextStyle(
-                    color: BeaconColors.forest,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
+          ),
+          Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+              backgroundColor: theme.surfaceColor.withValues(alpha: 0.9),
+              foregroundColor: theme.textColor,
+              scrolledUnderElevation: 0,
+              title: Row(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: const BorderRadius.all(Radius.circular(9)),
+                    ),
+                    child: SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        Icons.forum_rounded,
+                        color: theme.accentColor,
+                        size: 19,
+                      ),
+                    ),
                   ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Messages',
-                  style: TextStyle(
-                    color: BeaconColors.ink,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'YOUR CIRCLE',
+                        style: TextStyle(
+                          color: theme.accentColor,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Messages',
+                        style: TextStyle(
+                          color: theme.textColor,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
+                ],
+              ),
+              actions: [
+                IconButton(
+                  tooltip: 'Find a Beacon member',
+                  onPressed: _lookingUpPerson ? null : _findPerson,
+                  style: IconButton.styleFrom(
+                    foregroundColor: theme.accentColor,
+                    backgroundColor: theme.cardColor.withValues(alpha: 0.88),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                  ),
+                  icon: _lookingUpPerson
+                      ? const SizedBox.square(
+                          dimension: 19,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.person_search_outlined),
                 ),
+                const SizedBox(width: 8),
               ],
             ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Find a Beacon member',
-            onPressed: _lookingUpPerson ? null : _findPerson,
-            style: IconButton.styleFrom(
-              foregroundColor: BeaconColors.forest,
-              backgroundColor: const Color(0xFFE7EEE9),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(9),
-              ),
-            ),
-            icon: _lookingUpPerson
-                ? const SizedBox.square(
-                    dimension: 19,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.person_search_outlined),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: StreamBuilder<List<ChatConversation>>(
+            body: StreamBuilder<List<ChatConversation>>(
         stream: _conversations,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -233,6 +258,9 @@ class _ChatsPageState extends State<ChatsPage> {
             },
           );
         },
+      ),
+          ),
+        ],
       ),
     );
   }

@@ -15,12 +15,14 @@ class NotificationsPage extends StatefulWidget {
     required this.userId,
     required this.currentUser,
     required this.firestoreService,
+    this.themePreset = BeaconThemePreset.active,
     super.key,
   });
 
   final String userId;
   final AuthUser currentUser;
   final FirestoreService firestoreService;
+  final BeaconThemePreset themePreset;
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -81,190 +83,217 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          children: [
-            DecoratedBox(
+    final theme = BeaconAppTheme.forPreset(widget.themePreset);
+    return Container(
+      color: theme.backgroundColor,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.network(
+              theme.backgroundImageUrl,
+              fit: BoxFit.cover,
+              color: theme.backgroundColor.withValues(alpha: 0.12),
+              colorBlendMode: BlendMode.srcOver,
+              errorBuilder: (context, error, stackTrace) => const SizedBox(),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
               decoration: BoxDecoration(
-                color: Color(0x1FE66E61),
-                borderRadius: BorderRadius.all(Radius.circular(9)),
-              ),
-              child: SizedBox(
-                width: 36,
-                height: 36,
-                child: Icon(
-                  Icons.notifications_active_rounded,
-                  color: BeaconColors.coral,
-                  size: 19,
-                ),
+                color: theme.backgroundColor.withValues(alpha: 0.26),
               ),
             ),
-            SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'ALERT CENTER',
-                  style: TextStyle(
-                    color: BeaconColors.forest,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Notifications',
-                  style: TextStyle(
-                    color: BeaconColors.ink,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        centerTitle: false,
-        foregroundColor: BeaconColors.ink,
-        backgroundColor: BeaconColors.paper,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-      ),
-      body: StreamBuilder<List<FamilyContact>>(
-        stream: _familyContacts,
-        builder: (context, snapshot) {
-          final contacts = snapshot.data ?? const <FamilyContact>[];
-          final activeAlerts = contacts.where((contact) {
-            return contact.emergencyActive &&
-                (contact.emergencyExpiresAt == null ||
-                    contact.emergencyExpiresAt!.isAfter(DateTime.now()));
-          }).toList();
-          return StreamBuilder<List<FamilyInvitation>>(
-            stream: _invitations,
-            builder: (context, invitationSnapshot) {
-              final invitations =
-                  invitationSnapshot.data ?? const <FamilyInvitation>[];
-              final visibleAlerts = _filter == _NotificationFilter.requests
-                  ? const <FamilyContact>[]
-                  : activeAlerts;
-              final visibleInvitations =
-                  _filter == _NotificationFilter.emergency
-                      ? const <FamilyInvitation>[]
-                      : invitations;
-              final hasNotifications =
-                  visibleAlerts.isNotEmpty || visibleInvitations.isNotEmpty;
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+          ),
+          Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+              title: Row(
                 children: [
-                  _NotificationFilterBar(
-                    selected: _filter,
-                    onChanged: (filter) => setState(() => _filter = filter),
-                    alertCount: activeAlerts.length,
-                    requestCount: invitations.length,
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: const BorderRadius.all(Radius.circular(9)),
+                    ),
+                    child: SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        Icons.notifications_active_rounded,
+                        color: theme.accentColor,
+                        size: 19,
+                      ),
+                    ),
                   ),
-                  if (snapshot.hasError || invitationSnapshot.hasError)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 16),
-                      child: SurfacePanel(
-                        child: Text(
-                          'Some notifications could not be loaded. Check your connection and try again.',
-                          style: TextStyle(color: BeaconColors.muted),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ALERT CENTER',
+                        style: TextStyle(
+                          color: theme.accentColor,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                    ),
-                  if (!hasNotifications &&
-                      !snapshot.hasError &&
-                      !invitationSnapshot.hasError)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 52),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 58,
-                            height: 58,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFE8EEDB),
-                              borderRadius: BorderRadius.all(Radius.circular(18)),
-                            ),
-                            child: const Icon(
-                              Icons.notifications_none_rounded,
-                              color: BeaconColors.forest,
-                              size: 28,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'You’re all caught up',
-                            style: TextStyle(
-                              color: BeaconColors.ink,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 2),
+                      Text(
+                        'Notifications',
+                        style: TextStyle(
+                          color: theme.textColor,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                  if (visibleAlerts.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    _NotificationSectionHeading(
-                      title: 'Emergency alerts',
-                      count: visibleAlerts.length,
-                      urgent: true,
-                    ),
-                    const SizedBox(height: 10),
-                    SurfacePanel(
-                      child: Column(
-                        children: [
-                          for (var index = 0;
-                              index < visibleAlerts.length;
-                              index++) ...[
-                            if (index > 0)
-                              const Divider(
-                                  height: 1, color: BeaconColors.line),
-                            _EmergencyAlertTile(contact: visibleAlerts[index]),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                  if (visibleInvitations.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    _NotificationSectionHeading(
-                      title: 'Family requests',
-                      count: visibleInvitations.length,
-                    ),
-                    const SizedBox(height: 10),
-                    SurfacePanel(
-                      child: Column(
-                        children: [
-                          for (var index = 0;
-                              index < visibleInvitations.length;
-                              index++) ...[
-                            if (index > 0)
-                              const Divider(
-                                  height: 1, color: BeaconColors.line),
-                            _InvitationTile(
-                              invitation: visibleInvitations[index],
-                              busy: _respondingToInvitations
-                                  .contains(visibleInvitations[index].id),
-                              onAccept: () => _respondToInvitation(
-                                  visibleInvitations[index],
-                                  accept: true),
-                              onDecline: () => _respondToInvitation(
-                                  visibleInvitations[index],
-                                  accept: false),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ],
-              );
-            },
-          );
-        },
+              ),
+              centerTitle: false,
+              foregroundColor: theme.textColor,
+              backgroundColor: theme.surfaceColor.withValues(alpha: 0.9),
+              elevation: 0,
+              scrolledUnderElevation: 0,
+            ),
+            body: StreamBuilder<List<FamilyContact>>(
+              stream: _familyContacts,
+              builder: (context, snapshot) {
+                final contacts = snapshot.data ?? const <FamilyContact>[];
+                final activeAlerts = contacts.where((contact) {
+                  return contact.emergencyActive &&
+                      (contact.emergencyExpiresAt == null ||
+                          contact.emergencyExpiresAt!.isAfter(DateTime.now()));
+                }).toList();
+                return StreamBuilder<List<FamilyInvitation>>(
+                  stream: _invitations,
+                  builder: (context, invitationSnapshot) {
+                    final invitations =
+                        invitationSnapshot.data ?? const <FamilyInvitation>[];
+                    final visibleAlerts = _filter == _NotificationFilter.requests
+                        ? const <FamilyContact>[]
+                        : activeAlerts;
+                    final visibleInvitations =
+                        _filter == _NotificationFilter.emergency
+                            ? const <FamilyInvitation>[]
+                            : invitations;
+                    final hasNotifications =
+                        visibleAlerts.isNotEmpty || visibleInvitations.isNotEmpty;
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+                      children: [
+                        _NotificationFilterBar(
+                          selected: _filter,
+                          onChanged: (filter) => setState(() => _filter = filter),
+                          alertCount: activeAlerts.length,
+                          requestCount: invitations.length,
+                        ),
+                        if (snapshot.hasError || invitationSnapshot.hasError)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 16),
+                            child: SurfacePanel(
+                              child: Text(
+                                'Some notifications could not be loaded. Check your connection and try again.',
+                                style: TextStyle(color: BeaconColors.muted),
+                              ),
+                            ),
+                          ),
+                        if (!hasNotifications &&
+                            !snapshot.hasError &&
+                            !invitationSnapshot.hasError)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 52),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 58,
+                                  height: 58,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFE8EEDB),
+                                    borderRadius:
+                                        BorderRadius.all(Radius.circular(18)),
+                                  ),
+                                  child: const Icon(
+                                    Icons.notifications_none_rounded,
+                                    color: BeaconColors.forest,
+                                    size: 28,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'You’re all caught up',
+                                  style: TextStyle(
+                                    color: BeaconColors.ink,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (visibleAlerts.isNotEmpty) ...[
+                          const SizedBox(height: 24),
+                          _NotificationSectionHeading(
+                            title: 'Emergency alerts',
+                            count: visibleAlerts.length,
+                            urgent: true,
+                          ),
+                          const SizedBox(height: 10),
+                          SurfacePanel(
+                            child: Column(
+                              children: [
+                                for (var index = 0;
+                                    index < visibleAlerts.length;
+                                    index++) ...[
+                                  if (index > 0)
+                                    const Divider(
+                                        height: 1, color: BeaconColors.line),
+                                  _EmergencyAlertTile(
+                                      contact: visibleAlerts[index]),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                        if (visibleInvitations.isNotEmpty) ...[
+                          const SizedBox(height: 24),
+                          _NotificationSectionHeading(
+                            title: 'Family requests',
+                            count: visibleInvitations.length,
+                          ),
+                          const SizedBox(height: 10),
+                          SurfacePanel(
+                            child: Column(
+                              children: [
+                                for (var index = 0;
+                                    index < visibleInvitations.length;
+                                    index++) ...[
+                                  if (index > 0)
+                                    const Divider(
+                                        height: 1, color: BeaconColors.line),
+                                  _InvitationTile(
+                                    invitation: visibleInvitations[index],
+                                    busy: _respondingToInvitations.contains(
+                                        visibleInvitations[index].id),
+                                    onAccept: () => _respondToInvitation(
+                                        visibleInvitations[index],
+                                        accept: true),
+                                    onDecline: () => _respondToInvitation(
+                                        visibleInvitations[index],
+                                        accept: false),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

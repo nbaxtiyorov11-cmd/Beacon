@@ -8,12 +8,14 @@ class ProfilePage extends StatefulWidget {
     required this.user,
     required this.authService,
     required this.onOpenSettings,
+    this.themePreset = BeaconThemePreset.active,
     super.key,
   });
 
   final AuthUser user;
   final AuthService authService;
-  final VoidCallback onOpenSettings;
+  final ValueChanged<BuildContext> onOpenSettings;
+  final BeaconThemePreset themePreset;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -147,140 +149,168 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final activePreset =
+        Theme.of(context).extension<BeaconThemeTokens>()?.preset ??
+            widget.themePreset;
+    final theme = BeaconAppTheme.forPreset(activePreset);
     final verificationLabel = _emailVerified ? 'Verified' : 'Not verified';
     final verificationColor =
-        _emailVerified ? BeaconColors.forest : BeaconColors.coral;
+        _emailVerified ? theme.accentColor : BeaconColors.coral;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: BeaconColors.paper,
-        scrolledUnderElevation: 0,
-        title: const Row(
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Color(0xFFE7EEE9),
-                borderRadius: BorderRadius.all(Radius.circular(9)),
-              ),
-              child: SizedBox(
-                width: 36,
-                height: 36,
-                child: Icon(
-                  Icons.person_rounded,
-                  color: BeaconColors.forest,
-                  size: 20,
-                ),
-              ),
-            ),
-            SizedBox(width: 10),
-            Text(
-              'Profile',
-              style: TextStyle(
-                color: BeaconColors.ink,
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: _isWorking ? null : widget.onOpenSettings,
-            style: IconButton.styleFrom(
-              foregroundColor: BeaconColors.forest,
-              backgroundColor: const Color(0xFFE7EEE9),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(9),
-              ),
-            ),
-            icon: const Icon(Icons.tune_rounded),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
+    return Container(
+      color: theme.backgroundColor,
+      child: Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: BeaconColors.ink,
-              borderRadius: BorderRadius.circular(10),
+          Positioned.fill(
+            child: Image.network(
+              theme.backgroundImageUrl,
+              fit: BoxFit.cover,
+              color: theme.backgroundColor.withValues(alpha: 0.14),
+              colorBlendMode: BlendMode.srcOver,
+              errorBuilder: (context, error, stackTrace) => const SizedBox(),
             ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 62,
-                      height: 62,
-                      decoration: BoxDecoration(
-                        color: BeaconColors.lime,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        _initial,
-                        style: const TextStyle(
-                          color: BeaconColors.ink,
-                          fontSize: 25,
-                          fontWeight: FontWeight.w800,
-                        ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: theme.backgroundColor.withValues(alpha: 0.2),
+              ),
+            ),
+          ),
+          Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+              backgroundColor: theme.surfaceColor.withValues(alpha: 0.88),
+              foregroundColor: theme.textColor,
+              scrolledUnderElevation: 0,
+              title: Row(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: const BorderRadius.all(Radius.circular(9)),
+                    ),
+                    child: SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        Icons.person_rounded,
+                        color: theme.accentColor,
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Profile',
+                    style: TextStyle(
+                      color: theme.textColor,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                IconButton(
+                  tooltip: 'Settings',
+                  onPressed:
+                      _isWorking ? null : () => widget.onOpenSettings(context),
+                  style: IconButton.styleFrom(
+                    foregroundColor: theme.accentColor,
+                    backgroundColor: theme.cardColor.withValues(alpha: 0.88),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                  ),
+                  icon: const Icon(Icons.tune_rounded),
+                ),
+              ],
+            ),
+            body: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor.withValues(alpha: 0.96),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: theme.borderColor),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
                         children: [
-                          Text(
-                            _profileName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.user.email,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFFB8C7BD),
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 7),
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
+                            width: 62,
+                            height: 62,
                             decoration: BoxDecoration(
-                              color: verificationColor.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(999),
+                              color: theme.secondaryColor,
+                              borderRadius: BorderRadius.circular(18),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            alignment: Alignment.center,
+                            child: Text(
+                              _initial,
+                              style: TextStyle(
+                                color: theme.primaryColor,
+                                fontSize: 25,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  _emailVerified
-                                      ? Icons.verified_rounded
-                                      : Icons.pending_outlined,
-                                  color: _emailVerified
-                                      ? BeaconColors.lime
-                                      : const Color(0xFFFFB0A3),
-                                  size: 12,
-                                ),
-                                const SizedBox(width: 4),
                                 Text(
-                                  verificationLabel,
+                                  _profileName,
                                   style: TextStyle(
-                                    color: _emailVerified
-                                        ? BeaconColors.lime
-                                        : const Color(0xFFFFB0A3),
-                                    fontSize: 10,
+                                    color: theme.textColor,
+                                    fontSize: 24,
                                     fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  widget.user.email,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: theme.mutedTextColor,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: verificationColor.withValues(
+                                        alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _emailVerified
+                                            ? Icons.verified_rounded
+                                            : Icons.pending_outlined,
+                                        color: verificationColor,
+                                        size: 12,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        verificationLabel,
+                                        style: TextStyle(
+                                          color: theme.textColor,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -288,152 +318,150 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ProfileActionButton(
-                        label: 'Edit name',
+                      const SizedBox(height: 18),
+                      _ProfileActionButton(
+                        theme: theme,
+                        label: 'Edit profile',
                         icon: Icons.edit_outlined,
                         primary: true,
                         onPressed: _isWorking ? null : _editDisplayName,
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ProfileMetric(
+                        theme: theme,
+                        label: 'Status',
+                        value: verificationLabel,
+                        color: verificationColor,
+                        icon: _emailVerified
+                            ? Icons.verified_rounded
+                            : Icons.pending_outlined,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _ProfileActionButton(
-                        label: 'Settings',
-                        icon: Icons.tune_rounded,
-                        primary: false,
-                        onPressed: _isWorking ? null : widget.onOpenSettings,
+                      child: _ProfileMetric(
+                        theme: theme,
+                        label: 'Privacy',
+                        value: 'Protected',
+                        color: theme.accentColor,
+                        icon: Icons.shield_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _ProfileMetric(
+                        theme: theme,
+                        label: 'Access',
+                        value: 'Secure',
+                        color: theme.primaryColor,
+                        icon: Icons.lock_outline_rounded,
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              Expanded(
-                child: _ProfileMetric(
-                  label: 'Status',
-                  value: verificationLabel,
-                  color: verificationColor,
-                  icon: _emailVerified
-                      ? Icons.verified_rounded
-                      : Icons.pending_outlined,
+                const SizedBox(height: 24),
+                _ProfileSectionHeading(
+                  'Account',
+                  icon: Icons.person_outline_rounded,
+                  theme: theme,
                 ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: _ProfileMetric(
-                  label: 'Privacy',
-                  value: 'Protected',
-                  color: BeaconColors.forest,
+                const SizedBox(height: 10),
+                _ProfilePanel(
+                  theme: theme,
+                  children: [
+                    _ProfileDetail(
+                      theme: theme,
+                      icon: Icons.person_outline,
+                      label: 'Display name',
+                      value: _profileName,
+                    ),
+                    Divider(height: 22, color: theme.borderColor),
+                    _ProfileDetail(
+                      theme: theme,
+                      icon: Icons.mail_outline,
+                      label: 'Email address',
+                      value: widget.user.email,
+                      trailing: _emailVerified
+                          ? Icon(Icons.verified, color: theme.accentColor)
+                          : const Icon(Icons.error_outline,
+                              color: BeaconColors.coral),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                _ProfileSectionHeading(
+                  'Security',
                   icon: Icons.shield_outlined,
+                  theme: theme,
                 ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: _ProfileMetric(
-                  label: 'Access',
-                  value: 'Secure',
-                  color: BeaconColors.blue,
-                  icon: Icons.lock_outline_rounded,
+                const SizedBox(height: 10),
+                _ProfilePanel(
+                  theme: theme,
+                  children: [
+                    _ProfileActionTile(
+                      theme: theme,
+                      icon: Icons.password_rounded,
+                      title: 'Reset password',
+                      subtitle: 'Send a password reset link to your email',
+                      onTap: _isWorking ? null : _sendPasswordReset,
+                    ),
+                    if (!_emailVerified)
+                      Divider(height: 1, color: theme.borderColor),
+                    if (!_emailVerified)
+                      _ProfileActionTile(
+                        theme: theme,
+                        icon: Icons.mark_email_unread_outlined,
+                        title: 'Verify email',
+                        subtitle: 'Send a fresh verification email',
+                        onTap: _isWorking ? null : _sendVerificationEmail,
+                      ),
+                    Divider(height: 1, color: theme.borderColor),
+                    _ProfileActionTile(
+                      theme: theme,
+                      icon: Icons.refresh_rounded,
+                      title: 'Refresh verification status',
+                      subtitle: 'Check if your account state has updated',
+                      onTap: _isWorking ? null : _refreshVerificationStatus,
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const _ProfileSectionHeading(
-            'Account',
-            icon: Icons.person_outline_rounded,
-            color: BeaconColors.blue,
-          ),
-          const SizedBox(height: 10),
-          _ProfilePanel(
-            children: [
-              _ProfileDetail(
-                icon: Icons.person_outline,
-                label: 'Display name',
-                value: _profileName,
-              ),
-              const Divider(height: 22, color: BeaconColors.line),
-              _ProfileDetail(
-                icon: Icons.mail_outline,
-                label: 'Email address',
-                value: widget.user.email,
-                trailing: _emailVerified
-                    ? const Icon(Icons.verified, color: BeaconColors.forest)
-                    : const Icon(Icons.error_outline,
-                        color: BeaconColors.coral),
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          const _ProfileSectionHeading(
-            'Security',
-            icon: Icons.shield_outlined,
-            color: BeaconColors.forest,
-          ),
-          const SizedBox(height: 10),
-          _ProfilePanel(
-            children: [
-              _ProfileActionTile(
-                icon: Icons.password_rounded,
-                title: 'Reset password',
-                subtitle: 'Send a password reset link to your email',
-                onTap: _isWorking ? null : _sendPasswordReset,
-              ),
-              if (!_emailVerified)
-                const Divider(height: 1, color: BeaconColors.line),
-              if (!_emailVerified)
-                _ProfileActionTile(
-                  icon: Icons.mark_email_unread_outlined,
-                  title: 'Verify email',
-                  subtitle: 'Send a fresh verification email',
-                  onTap: _isWorking ? null : _sendVerificationEmail,
+                const SizedBox(height: 22),
+                _ProfileSectionHeading(
+                  'Account access',
+                  icon: Icons.login_rounded,
+                  theme: theme,
                 ),
-              const Divider(height: 1, color: BeaconColors.line),
-              _ProfileActionTile(
-                icon: Icons.refresh_rounded,
-                title: 'Refresh verification status',
-                subtitle: 'Check if your account state has updated',
-                onTap: _isWorking ? null : _refreshVerificationStatus,
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          const _ProfileSectionHeading(
-            'Account access',
-            icon: Icons.login_rounded,
-            color: BeaconColors.blue,
-          ),
-          const SizedBox(height: 10),
-          _ProfilePanel(
-            children: [
-              _ProfileActionTile(
-                icon: Icons.logout_rounded,
-                title: 'Log out',
-                subtitle: 'Sign out of Beacon on this device',
-                onTap: _isWorking ? null : _signOut,
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          const Center(
-            child: Text(
-              'SECURED BY FIREBASE AUTH',
-              style: TextStyle(
-                color: BeaconColors.muted,
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-              ),
+                const SizedBox(height: 10),
+                _ProfilePanel(
+                  theme: theme,
+                  children: [
+                    _ProfileActionTile(
+                      theme: theme,
+                      icon: Icons.logout_rounded,
+                      title: 'Log out',
+                      subtitle: 'Sign out of Beacon on this device',
+                      onTap: _isWorking ? null : _signOut,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Center(
+                  child: Text(
+                    'SECURED BY FIREBASE AUTH',
+                    style: TextStyle(
+                      color: theme.mutedTextColor,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -444,12 +472,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
 class _ProfileActionButton extends StatelessWidget {
   const _ProfileActionButton({
+    required this.theme,
     required this.label,
     required this.icon,
     required this.primary,
     required this.onPressed,
   });
 
+  final BeaconAppTheme theme;
   final String label;
   final IconData icon;
   final bool primary;
@@ -463,8 +493,8 @@ class _ProfileActionButton extends StatelessWidget {
           ? FilledButton.icon(
               onPressed: onPressed,
               style: FilledButton.styleFrom(
-                backgroundColor: BeaconColors.lime,
-                foregroundColor: BeaconColors.ink,
+                backgroundColor: theme.secondaryColor,
+                foregroundColor: theme.primaryColor,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(7),
@@ -476,8 +506,8 @@ class _ProfileActionButton extends StatelessWidget {
           : OutlinedButton.icon(
               onPressed: onPressed,
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Color(0x667F978A)),
+                foregroundColor: theme.primaryColor,
+                side: BorderSide(color: theme.borderColor),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(7),
@@ -494,12 +524,12 @@ class _ProfileSectionHeading extends StatelessWidget {
   const _ProfileSectionHeading(
     this.title, {
     required this.icon,
-    required this.color,
+    required this.theme,
   });
 
   final String title;
   final IconData icon;
-  final Color color;
+  final BeaconAppTheme theme;
 
   @override
   Widget build(BuildContext context) {
@@ -509,16 +539,16 @@ class _ProfileSectionHeading extends StatelessWidget {
           width: 34,
           height: 34,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.13),
+            color: theme.tagColor,
             borderRadius: BorderRadius.circular(9),
           ),
-          child: Icon(icon, size: 18, color: color),
+          child: Icon(icon, size: 18, color: theme.accentColor),
         ),
         const SizedBox(width: 10),
         Text(
           title,
-          style: const TextStyle(
-            color: BeaconColors.ink,
+          style: TextStyle(
+            color: theme.textColor,
             fontSize: 16,
             fontWeight: FontWeight.w800,
           ),
@@ -530,12 +560,14 @@ class _ProfileSectionHeading extends StatelessWidget {
 
 class _ProfileMetric extends StatelessWidget {
   const _ProfileMetric({
+    required this.theme,
     required this.label,
     required this.value,
     required this.color,
     required this.icon,
   });
 
+  final BeaconAppTheme theme;
   final String label;
   final String value;
   final Color color;
@@ -547,8 +579,8 @@ class _ProfileMetric extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 96),
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        color: theme.tagColor,
+        border: Border.all(color: theme.borderColor),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -558,7 +590,7 @@ class _ProfileMetric extends StatelessWidget {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.78),
+              color: theme.cardColor,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: color, size: 16),
@@ -566,8 +598,8 @@ class _ProfileMetric extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(
-              color: BeaconColors.ink,
+            style: TextStyle(
+              color: theme.textColor,
               fontSize: 13,
               fontWeight: FontWeight.w800,
             ),
@@ -575,8 +607,8 @@ class _ProfileMetric extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             label,
-            style: const TextStyle(
-              color: BeaconColors.muted,
+            style: TextStyle(
+              color: theme.mutedTextColor,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -588,20 +620,21 @@ class _ProfileMetric extends StatelessWidget {
 }
 
 class _ProfilePanel extends StatelessWidget {
-  const _ProfilePanel({required this.children});
+  const _ProfilePanel({required this.theme, required this.children});
 
+  final BeaconAppTheme theme;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: BeaconColors.line),
+        color: theme.surfaceColor,
+        border: Border.all(color: theme.borderColor),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Material(
-        color: Colors.white,
+        color: theme.surfaceColor,
         borderRadius: BorderRadius.circular(10),
         clipBehavior: Clip.antiAlias,
         child: Column(children: children),
@@ -612,12 +645,14 @@ class _ProfilePanel extends StatelessWidget {
 
 class _ProfileActionTile extends StatelessWidget {
   const _ProfileActionTile({
+    required this.theme,
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
 
+  final BeaconAppTheme theme;
   final IconData icon;
   final String title;
   final String subtitle;
@@ -631,15 +666,21 @@ class _ProfileActionTile extends StatelessWidget {
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: const Color(0xFFE8EEDB),
+          color: theme.tagColor,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, color: BeaconColors.ink, size: 18),
+        child: Icon(icon, color: theme.accentColor, size: 18),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: theme.textColor,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
       subtitle: Text(subtitle,
-          style: const TextStyle(color: BeaconColors.muted, fontSize: 12)),
-      trailing: const Icon(Icons.chevron_right, color: BeaconColors.muted),
+          style: TextStyle(color: theme.mutedTextColor, fontSize: 12)),
+      trailing: Icon(Icons.chevron_right, color: theme.mutedTextColor),
       onTap: onTap,
     );
   }
@@ -647,12 +688,14 @@ class _ProfileActionTile extends StatelessWidget {
 
 class _ProfileDetail extends StatelessWidget {
   const _ProfileDetail({
+    required this.theme,
     required this.icon,
     required this.label,
     required this.value,
     this.trailing,
   });
 
+  final BeaconAppTheme theme;
   final IconData icon;
   final String label;
   final String value;
@@ -662,7 +705,7 @@ class _ProfileDetail extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: BeaconColors.muted, size: 20),
+        Icon(icon, color: theme.accentColor, size: 20),
         const SizedBox(width: 11),
         Expanded(
           child: Column(
@@ -670,13 +713,16 @@ class _ProfileDetail extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(color: BeaconColors.muted, fontSize: 12),
+                style: TextStyle(
+                  color: theme.mutedTextColor,
+                  fontSize: 12,
+                ),
               ),
               const SizedBox(height: 3),
               Text(
                 value,
-                style: const TextStyle(
-                  color: BeaconColors.ink,
+                style: TextStyle(
+                  color: theme.textColor,
                   fontWeight: FontWeight.w600,
                 ),
               ),

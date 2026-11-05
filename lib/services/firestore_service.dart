@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../auth/auth_service.dart';
+import '../theme/beacon_theme.dart';
 import 'trip_service.dart';
 
 class FamilyContact {
@@ -241,12 +242,14 @@ class UserSettings {
     this.approximateLocation = false,
     this.familySharing = false,
     this.notifications = true,
+    this.themePreset = BeaconThemePreset.active,
   });
 
   final bool trackingEnabled;
   final bool approximateLocation;
   final bool familySharing;
   final bool notifications;
+  final BeaconThemePreset themePreset;
 
   factory UserSettings.fromMap(Map<String, dynamic>? data) {
     final map = data ?? const <String, dynamic>{};
@@ -255,6 +258,25 @@ class UserSettings {
       approximateLocation: map['approximateLocation'] as bool? ?? false,
       familySharing: map['familySharing'] as bool? ?? false,
       notifications: map['notifications'] as bool? ?? true,
+      themePreset: _themePresetFromString(
+        map['themePreset'] as String? ?? 'active',
+      ),
+    );
+  }
+
+  UserSettings copyWith({
+    bool? trackingEnabled,
+    bool? approximateLocation,
+    bool? familySharing,
+    bool? notifications,
+    BeaconThemePreset? themePreset,
+  }) {
+    return UserSettings(
+      trackingEnabled: trackingEnabled ?? this.trackingEnabled,
+      approximateLocation: approximateLocation ?? this.approximateLocation,
+      familySharing: familySharing ?? this.familySharing,
+      notifications: notifications ?? this.notifications,
+      themePreset: themePreset ?? this.themePreset,
     );
   }
 
@@ -263,7 +285,28 @@ class UserSettings {
         'approximateLocation': approximateLocation,
         'familySharing': familySharing,
         'notifications': notifications,
+        'themePreset': themePreset.name,
       };
+
+  static BeaconThemePreset _themePresetFromString(String value) {
+    switch (value) {
+      case 'spring':
+        return BeaconThemePreset.spring;
+      case 'summer':
+        return BeaconThemePreset.summer;
+      case 'autumn':
+        return BeaconThemePreset.autumn;
+      case 'winter':
+        return BeaconThemePreset.winter;
+      case 'performance':
+        return BeaconThemePreset.performance;
+      case 'chill':
+        return BeaconThemePreset.chill;
+      case 'active':
+      default:
+        return BeaconThemePreset.active;
+    }
+  }
 }
 
 class FirestoreService {

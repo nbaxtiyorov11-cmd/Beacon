@@ -12,6 +12,7 @@ class ChatRoomPage extends StatefulWidget {
     required this.chatId,
     required this.otherProfile,
     required this.firestoreService,
+    this.themePreset = BeaconThemePreset.active,
     super.key,
   });
 
@@ -19,6 +20,7 @@ class ChatRoomPage extends StatefulWidget {
   final String chatId;
   final PublicUserProfile otherProfile;
   final FirestoreService firestoreService;
+  final BeaconThemePreset themePreset;
 
   @override
   State<ChatRoomPage> createState() => _ChatRoomPageState();
@@ -189,143 +191,186 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = BeaconAppTheme.forPreset(widget.themePreset);
     final name = widget.otherProfile.displayName.trim().isEmpty
         ? 'Beacon member'
         : widget.otherProfile.displayName.trim();
-    return Scaffold(
-      backgroundColor: BeaconColors.paper,
-      appBar: AppBar(
-        backgroundColor: BeaconColors.paper,
-        scrolledUnderElevation: 0,
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            _ChatAvatar(
-                name: name, photoUrl: widget.otherProfile.photoUrl, radius: 18),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      color: theme.backgroundColor,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.network(
+              theme.backgroundImageUrl,
+              fit: BoxFit.cover,
+              color: theme.backgroundColor.withValues(alpha: 0.12),
+              colorBlendMode: BlendMode.srcOver,
+              errorBuilder: (context, error, stackTrace) => const SizedBox(),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: theme.backgroundColor.withValues(alpha: 0.25),
+              ),
+            ),
+          ),
+          Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+              backgroundColor: theme.surfaceColor.withValues(alpha: 0.9),
+              foregroundColor: theme.textColor,
+              scrolledUnderElevation: 0,
+              titleSpacing: 0,
+              title: Row(
                 children: [
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: BeaconColors.ink,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  _ChatAvatar(
+                    name: name,
+                    photoUrl: widget.otherProfile.photoUrl,
+                    radius: 18,
+                    accent: theme.accentColor,
                   ),
-                  const Row(
-                    children: [
-                      Icon(Icons.lock_rounded,
-                          color: BeaconColors.forest, size: 10),
-                      SizedBox(width: 4),
-                      Text(
-                        'Private conversation',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: BeaconColors.muted,
-                          fontWeight: FontWeight.w500,
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                    ],
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.lock_rounded,
+                              color: theme.accentColor,
+                              size: 10,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Private conversation',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: theme.mutedTextColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Conversation details',
-            onPressed: () => showModalBottomSheet<void>(
-              context: context,
-              showDragHandle: true,
-              builder: (context) => SafeArea(
-                child: ListTile(
-                  leading: const Icon(Icons.alternate_email),
-                  title: Text(widget.otherProfile.email),
-                  subtitle: const Text('Direct conversation'),
+              actions: [
+                IconButton(
+                  tooltip: 'Conversation details',
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (context) => SafeArea(
+                      child: ListTile(
+                        leading: const Icon(Icons.alternate_email),
+                        title: Text(widget.otherProfile.email),
+                        subtitle: const Text('Direct conversation'),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.more_horiz_rounded),
                 ),
-              ),
+                const SizedBox(width: 6),
+              ],
             ),
-            icon: const Icon(Icons.more_horiz_rounded),
-          ),
-          const SizedBox(width: 6),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<ChatConversation?>(
-              stream: _conversation,
-              builder: (context, snapshot) {
-                final conversation = snapshot.data;
-                final otherUid = widget.otherProfile.uid;
-                final otherReadAt = conversation?.lastReadAt[otherUid];
-                return StreamBuilder<List<ChatMessage>>(
-                  stream: _messages,
-                  builder: (context, messageSnapshot) {
-                    if (messageSnapshot.hasError) {
-                      return const Center(
-                          child: Text(
-                              'Messages could not load. Check your connection.'));
-                    }
-                    if (messageSnapshot.connectionState ==
-                            ConnectionState.waiting &&
-                        !messageSnapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final messages =
-                        messageSnapshot.data ?? const <ChatMessage>[];
-                    if (messages.isEmpty) return _FirstMessage(name: name);
-                    final latestId = messages.last.id;
-                    if (_markedLatestMessage != latestId) {
-                      _markedLatestMessage = latestId;
-                      unawaited(_markRead());
-                      _scrollToLatest();
-                    }
-                    return ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final message = messages[index];
-                        final own = message.senderUid == widget.currentUser.uid;
-                        final previous = index > 0 ? messages[index - 1] : null;
-                        final showDay = previous == null ||
-                            !_sameDay(previous.createdAt, message.createdAt);
-                        return Column(
-                          children: [
-                            if (showDay) _DayDivider(date: message.createdAt),
-                            _MessageBubble(
-                              message: message,
-                              own: own,
-                              isLatest: index == messages.length - 1,
-                              otherReadAt: otherReadAt,
-                              onLongPress: () => _showMessageActions(message),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                );
-              },
+            body: Column(
+              children: [
+                Expanded(
+                  child: StreamBuilder<ChatConversation?>(
+                    stream: _conversation,
+                    builder: (context, snapshot) {
+                      final conversation = snapshot.data;
+                      final otherUid = widget.otherProfile.uid;
+                      final otherReadAt = conversation?.lastReadAt[otherUid];
+                      return StreamBuilder<List<ChatMessage>>(
+                        stream: _messages,
+                        builder: (context, messageSnapshot) {
+                          if (messageSnapshot.hasError) {
+                            return const Center(
+                              child: Text(
+                                'Messages could not load. Check your connection.',
+                              ),
+                            );
+                          }
+                          if (messageSnapshot.connectionState ==
+                                  ConnectionState.waiting &&
+                              !messageSnapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+                          final messages =
+                              messageSnapshot.data ?? const <ChatMessage>[];
+                          if (messages.isEmpty) {
+                            return _FirstMessage(name: name);
+                          }
+                          final latestId = messages.last.id;
+                          if (_markedLatestMessage != latestId) {
+                            _markedLatestMessage = latestId;
+                            unawaited(_markRead());
+                            _scrollToLatest();
+                          }
+                          return ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final message = messages[index];
+                              final own =
+                                  message.senderUid == widget.currentUser.uid;
+                              final previous =
+                                  index > 0 ? messages[index - 1] : null;
+                              final showDay = previous == null ||
+                                  !_sameDay(
+                                      previous.createdAt, message.createdAt);
+                              return Column(
+                                children: [
+                                  if (showDay)
+                                    _DayDivider(date: message.createdAt),
+                                  _MessageBubble(
+                                    message: message,
+                                    own: own,
+                                    isLatest: index == messages.length - 1,
+                                    otherReadAt: otherReadAt,
+                                    onLongPress: () =>
+                                        _showMessageActions(message),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                _Composer(
+                  controller: _messageController,
+                  focusNode: _focusNode,
+                  replyingTo: _replyingTo,
+                  emojiTrayOpen: _emojiTrayOpen,
+                  onToggleEmojiTray: () =>
+                      setState(() => _emojiTrayOpen = !_emojiTrayOpen),
+                  onEmojiSelected: _insertEmoji,
+                  onCancelReply: () => setState(() => _replyingTo = null),
+                  onSend: _sendMessage,
+                ),
+              ],
             ),
-          ),
-          _Composer(
-            controller: _messageController,
-            focusNode: _focusNode,
-            replyingTo: _replyingTo,
-            emojiTrayOpen: _emojiTrayOpen,
-            onToggleEmojiTray: () =>
-                setState(() => _emojiTrayOpen = !_emojiTrayOpen),
-            onEmojiSelected: _insertEmoji,
-            onCancelReply: () => setState(() => _replyingTo = null),
-            onSend: _sendMessage,
           ),
         ],
       ),
@@ -670,12 +715,17 @@ class _FirstMessage extends StatelessWidget {
 }
 
 class _ChatAvatar extends StatelessWidget {
-  const _ChatAvatar(
-      {required this.name, required this.photoUrl, required this.radius});
+  const _ChatAvatar({
+    required this.name,
+    required this.photoUrl,
+    required this.radius,
+    required this.accent,
+  });
 
   final String name;
   final String photoUrl;
   final double radius;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -685,7 +735,8 @@ class _ChatAvatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFFE7EEE9),
+        color: accent.withValues(alpha: 0.12),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
         borderRadius: BorderRadius.circular(12),
         image: photoUrl.isEmpty
             ? null
@@ -697,8 +748,8 @@ class _ChatAvatar extends StatelessWidget {
       child: photoUrl.isEmpty
           ? Text(
               name.trim().isEmpty ? 'B' : name.trim()[0].toUpperCase(),
-              style: const TextStyle(
-                color: BeaconColors.forest,
+              style: TextStyle(
+                color: accent,
                 fontWeight: FontWeight.w800,
               ),
             )
