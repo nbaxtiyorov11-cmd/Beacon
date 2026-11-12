@@ -7,6 +7,7 @@ import 'auth/auth_service.dart';
 import 'firebase_options.dart';
 import 'services/firestore_service.dart';
 import 'services/location_service.dart';
+import 'services/tracking_foreground_service.dart';
 import 'services/trip_service.dart';
 import 'theme/beacon_theme.dart';
 
@@ -25,6 +26,7 @@ class BeaconApp extends StatefulWidget {
     LocationService? locationService,
     TripService? tripService,
     FirestoreService? firestoreService,
+    this.trackingNotificationsEnabled = true,
   }) : authService = authService ?? FirebaseAuthService(),
        locationService = locationService ?? LocationService(),
        tripService = tripService ?? TripService(),
@@ -34,6 +36,7 @@ class BeaconApp extends StatefulWidget {
   final LocationService locationService;
   final TripService tripService;
   final FirestoreService firestoreService;
+  final bool trackingNotificationsEnabled;
 
   @override
   State<BeaconApp> createState() => _BeaconAppState();
@@ -41,6 +44,14 @@ class BeaconApp extends StatefulWidget {
 
 class _BeaconAppState extends State<BeaconApp> {
   BeaconThemePreset _themePreset = BeaconThemePreset.active;
+
+  @override
+  void initState() {
+    super.initState();
+    initializeTrackingForegroundService(
+      enabled: widget.trackingNotificationsEnabled,
+    );
+  }
 
   void _updateThemePreset(BeaconThemePreset preset) {
     if (!mounted) return;

@@ -45,6 +45,31 @@ class SafePlace {
       radiusMeters;
 }
 
+class SafePlaceVisit {
+  const SafePlaceVisit({
+    required this.id,
+    required this.placeId,
+    required this.placeName,
+    required this.startedAt,
+    required this.endedAt,
+    required this.durationSeconds,
+  });
+
+  final String id;
+  final String placeId;
+  final String placeName;
+  final DateTime startedAt;
+  final DateTime endedAt;
+  final int durationSeconds;
+
+  int secondsOverlapping(DateTime start, DateTime end) {
+    final overlapStart = startedAt.isAfter(start) ? startedAt : start;
+    final overlapEnd = endedAt.isBefore(end) ? endedAt : end;
+    if (!overlapEnd.isAfter(overlapStart)) return 0;
+    return overlapEnd.difference(overlapStart).inSeconds;
+  }
+}
+
 class TripEntry {
   TripEntry({
     required this.id,
@@ -80,6 +105,8 @@ class TripEntry {
 class TripService {
   static const maximumContinuousSampleGap = Duration(seconds: 20);
   static const maximumAcceptedAccuracyMeters = 50.0;
+  static const maximumPlausibleSpeedMetersPerSecond = 45.0;
+  static const minimumReliableDisplacementMeters = 3.0;
 
   final List<TripEntry> _trips = <TripEntry>[];
 
@@ -97,26 +124,84 @@ class TripService {
 
   static bool samplesAreContinuous(Position previous, Position current) {
     final gap = current.timestamp.difference(previous.timestamp);
-    return gap > Duration.zero && gap <= maximumContinuousSampleGap;
+    return gap > Duration.zero &&
+        gap <= maximumContinuousSampleGap &&
+        isPlausibleMovement(previous, current);
   }
+
+  static bool isPlausibleMovement(Position previous, Position current) {
+    final seconds =
+        current.timestamp.difference(previous.timestamp).inMicroseconds /
+            Duration.microsecondsPerSecond;
+    if (seconds <= 0) return false;
+    final distanceMeters = Geolocator.distanceBetween(
+      previous.latitude,
+      previous.longitude,
+      current.latitude,
+      current.longitude,
+    );
+    return distanceMeters <= maximumPlausibleSpeedMetersPerSecond * seconds;
+  }
+
+  static bool isReliableDisplacement(Position previous, Position current) {
+    final distanceMeters = Geolocator.distanceBetween(
+      previous.latitude,
+      previous.longitude,
+      current.latitude,
+      current.longitude,
+    );
+    final accuracyThreshold = (previous.accuracy + current.accuracy) * 0.25;
+    return distanceMeters >=
+        math.max(minimumReliableDisplacementMeters, accuracyThreshold);
+  }
+
+  bool _isValidPosition(Position position) =>
+      position.latitude.isFinite &&
+      position.longitude.isFinite &&
+      position.latitude >= -90 &&
+      position.latitude <= 90 &&
+      position.longitude >= -180 &&
+      position.longitude <= 180 &&
+      position.accuracy.isFinite &&
+      position.accuracy >= 0 &&
+      position.accuracy <= maximumAcceptedAccuracyMeters;
 
   TripEntry? recordTripFromPositions(
     List<Position> positions, {
     String? name,
     Iterable<int> segmentStartIndices = const [],
+    bool addToHistory = true,
   }) {
     if (positions.isEmpty) return null;
 
-    final validPositions = positions
-        .where((position) =>
-            position.latitude.isFinite &&
-            position.longitude.isFinite &&
-            position.accuracy.isFinite &&
-            position.accuracy <= maximumAcceptedAccuracyMeters)
-        .toList();
+    final explicitSegmentStarts = segmentStartIndices.toSet();
+    final validPositions = <({Position position, bool segmentStart})>[];
+    for (var index = 0; index < positions.length; index++) {
+      final position = positions[index];
+      if (!_isValidPosition(position)) continue;
+      if (validPositions.isEmpty) {
+        validPositions.add((position: position, segmentStart: true));
+        continue;
+      }
+
+      final previous = validPositions.last.position;
+      final gap = position.timestamp.difference(previous.timestamp);
+      if (!explicitSegmentStarts.contains(index) && gap <= Duration.zero) {
+        continue;
+      }
+      final startsSegment = explicitSegmentStarts.contains(index) ||
+          gap > maximumContinuousSampleGap;
+      if (!startsSegment) {
+        if (!isPlausibleMovement(previous, position) ||
+            !isReliableDisplacement(previous, position)) {
+          continue;
+        }
+      }
+      validPositions.add((position: position, segmentStart: startsSegment));
+    }
     if (validPositions.isEmpty) return null;
     if (validPositions.length < 2) {
-      final point = validPositions.first;
+      final point = validPositions.first.position;
       final trip = TripEntry(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         startedAt: point.timestamp,
@@ -133,21 +218,20 @@ class TripService {
         name: name,
         movingSeconds: 0,
       );
-      _trips.insert(0, trip);
+      if (addToHistory) _trips.insert(0, trip);
       return trip;
     }
 
     final points = <TripLocation>[];
-    final explicitSegmentStarts = segmentStartIndices.toSet();
-    final startedAt = validPositions.first.timestamp;
-    final endedAt = validPositions.last.timestamp;
+    final startedAt = validPositions.first.position.timestamp;
+    final endedAt = validPositions.last.position.timestamp;
     double totalDistance = 0;
     double movingSeconds = 0;
     for (var index = 0; index < validPositions.length; index++) {
-      final position = validPositions[index];
+      final position = validPositions[index].position;
       final segmentStart = index == 0 ||
-          explicitSegmentStarts.contains(index) ||
-          !samplesAreContinuous(validPositions[index - 1], position);
+          validPositions[index].segmentStart ||
+          !samplesAreContinuous(validPositions[index - 1].position, position);
       points.add(TripLocation(
         latitude: position.latitude,
         longitude: position.longitude,
@@ -156,11 +240,11 @@ class TripService {
       if (segmentStart) continue;
 
       movingSeconds += position.timestamp
-          .difference(validPositions[index - 1].timestamp)
+          .difference(validPositions[index - 1].position.timestamp)
           .inSeconds;
       totalDistance += _distanceBetween(
-        validPositions[index - 1].latitude,
-        validPositions[index - 1].longitude,
+        validPositions[index - 1].position.latitude,
+        validPositions[index - 1].position.longitude,
         position.latitude,
         position.longitude,
       );
@@ -181,7 +265,7 @@ class TripService {
       movingSeconds: movingSeconds,
     );
 
-    _trips.insert(0, trip);
+    if (addToHistory) _trips.insert(0, trip);
     return trip;
   }
 

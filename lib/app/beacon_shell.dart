@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../auth/auth_service.dart';
@@ -17,6 +18,7 @@ import '../pages/profile_page.dart';
 import '../pages/settings_page.dart';
 import '../services/firestore_service.dart';
 import '../services/location_service.dart';
+import '../services/tracking_foreground_service.dart';
 import '../services/trip_service.dart';
 import '../theme/beacon_theme.dart';
 
@@ -48,8 +50,10 @@ class _BeaconShellState extends State<BeaconShell> {
   int _selectedIndex = 0;
   bool _trackingEnabled = false;
   bool _trackingSessionActive = false;
+  TripEntry? _pendingTripSave;
   UserSettings _userSettings = const UserSettings();
   StreamSubscription<List<TripEntry>>? _tripSubscription;
+  StreamSubscription<List<SafePlaceVisit>>? _safePlaceVisitSubscription;
   StreamSubscription<List<FamilyInvitation>>? _invitationSubscription;
   StreamSubscription<List<SafePlace>>? _safePlaceSubscription;
   StreamSubscription<Position>? _locationSubscription;
@@ -60,20 +64,28 @@ class _BeaconShellState extends State<BeaconShell> {
   DateTime? _lastFamilyLocationWrite;
   int _trackingSaveGeneration = 0;
   int _pendingInvitationCount = 0;
+  List<FamilyInvitation> _pendingInvitations = const [];
   List<SafePlace> _safePlaces = const [];
+  List<SafePlaceVisit> _safePlaceVisits = const [];
   String? _activeSafePlaceId;
+  String? _activeSafePlaceName;
+  DateTime? _activeSafePlaceStartedAt;
   double _activeSafePlaceSeconds = 0;
+  final Map<String, int> _tripSafePlaceSeconds = {};
   Position? _previousSafePlacePosition;
   String? _messagingToken;
   bool _configuringMessaging = false;
+  DateTime? _lastTrackingNotificationUpdate;
 
   @override
   void initState() {
     super.initState();
     _trackingEnabled = widget.locationService.trackingEnabled;
     _trackingSessionActive = widget.locationService.hasActiveTrip;
+    FlutterForegroundTask.addTaskDataCallback(_onForegroundTaskData);
     _loadUserData();
     _watchTrips();
+    _watchSafePlaceVisits();
     _watchIncomingInvitations();
     _watchSafePlaces();
     _locationSubscription =
@@ -85,6 +97,19 @@ class _BeaconShellState extends State<BeaconShell> {
       if (mounted) setState(() {});
     });
     if (_trackingEnabled) _startTrackingClock();
+  }
+
+  void _onForegroundTaskData(Object data) {
+    if (data is! Map || data['type'] != 'tracking_notification_action') return;
+
+    switch (data['action']) {
+      case trackingNotificationPauseAction:
+        unawaited(_setTracking(false));
+        break;
+      case trackingNotificationEndAction:
+        unawaited(_endTrip());
+        break;
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -125,7 +150,10 @@ class _BeaconShellState extends State<BeaconShell> {
         .watchIncomingFamilyInvitations(widget.user.uid)
         .listen((invitations) {
       if (!mounted) return;
-      setState(() => _pendingInvitationCount = invitations.length);
+      setState(() {
+        _pendingInvitations = List.unmodifiable(invitations);
+        _pendingInvitationCount = invitations.length;
+      });
     });
   }
 
@@ -133,17 +161,30 @@ class _BeaconShellState extends State<BeaconShell> {
     _safePlaceSubscription =
         widget.firestoreService.watchSafePlaces(widget.user.uid).listen(
       (places) {
-        _safePlaces = places;
         if (_activeSafePlaceId != null &&
             !places.any((place) => place.id == _activeSafePlaceId)) {
           _finishSafePlaceVisit(
             _previousSafePlacePosition?.timestamp ?? DateTime.now(),
           );
         }
+        _safePlaces = places;
         if (mounted) setState(() {});
       },
       onError: (Object error) =>
           debugPrint('Could not load safe places: $error'),
+    );
+  }
+
+  void _watchSafePlaceVisits() {
+    _safePlaceVisitSubscription =
+        widget.firestoreService.watchSafePlaceVisits(widget.user.uid).listen(
+      (visits) {
+        _safePlaceVisits = visits;
+        if (mounted) setState(() {});
+      },
+      onError: (Object error) {
+        debugPrint('Could not load safe-place visit history: $error');
+      },
     );
   }
 
@@ -169,10 +210,18 @@ class _BeaconShellState extends State<BeaconShell> {
     if (place != null) {
       if (_activeSafePlaceId == null) {
         _activeSafePlaceId = place.id;
+        _activeSafePlaceName = place.name;
+        _activeSafePlaceStartedAt = position.timestamp;
         _activeSafePlaceSeconds = 0;
       } else if (continuous) {
-        _activeSafePlaceSeconds +=
+        final elapsedSeconds =
             position.timestamp.difference(previous.timestamp).inSeconds;
+        _activeSafePlaceSeconds += elapsedSeconds;
+        _tripSafePlaceSeconds.update(
+          place.id,
+          (seconds) => seconds + elapsedSeconds,
+          ifAbsent: () => elapsedSeconds,
+        );
       }
     }
 
@@ -181,33 +230,47 @@ class _BeaconShellState extends State<BeaconShell> {
 
   void _finishSafePlaceVisit(DateTime visitedAt) {
     final placeId = _activeSafePlaceId;
+    final placeName = _activeSafePlaceName;
+    final startedAt = _activeSafePlaceStartedAt;
     final visitSeconds = _activeSafePlaceSeconds.round();
     if (placeId != null &&
+        placeName != null &&
+        startedAt != null &&
         visitSeconds > 0 &&
-        _safePlaces.any((place) => place.id == placeId)) {
+        visitedAt.isAfter(startedAt)) {
       unawaited(_saveSafePlaceVisit(
         placeId: placeId,
+        placeName: placeName,
         visitSeconds: visitSeconds,
-        visitedAt: visitedAt,
+        startedAt: startedAt,
+        endedAt: visitedAt,
       ));
     }
     _activeSafePlaceId = null;
+    _activeSafePlaceName = null;
+    _activeSafePlaceStartedAt = null;
     _activeSafePlaceSeconds = 0;
   }
 
   Future<void> _saveSafePlaceVisit({
     required String placeId,
+    required String placeName,
     required int visitSeconds,
-    required DateTime visitedAt,
+    required DateTime startedAt,
+    required DateTime endedAt,
   }) async {
     try {
       await widget.firestoreService.recordSafePlaceVisit(
         userId: widget.user.uid,
         placeId: placeId,
+        placeName: placeName,
         visitSeconds: visitSeconds,
-        visitedAt: visitedAt,
+        startedAt: startedAt,
+        endedAt: endedAt,
       );
     } catch (error) {
+      widget.firestoreService.status.value =
+          'Safe-place visit could not be saved';
       debugPrint('Could not save safe-place visit: $error');
     }
   }
@@ -301,7 +364,12 @@ class _BeaconShellState extends State<BeaconShell> {
   @override
   void dispose() {
     _trackingTimer?.cancel();
+    FlutterForegroundTask.removeTaskDataCallback(_onForegroundTaskData);
+    _finishSafePlaceVisit(
+      _previousSafePlacePosition?.timestamp ?? DateTime.now(),
+    );
     unawaited(_tripSubscription?.cancel());
+    unawaited(_safePlaceVisitSubscription?.cancel());
     unawaited(_invitationSubscription?.cancel());
     unawaited(_safePlaceSubscription?.cancel());
     unawaited(_locationSubscription?.cancel());
@@ -318,10 +386,43 @@ class _BeaconShellState extends State<BeaconShell> {
     final messenger = ScaffoldMessenger.maybeOf(context);
 
     if (enabled) {
-      final started = _trackingSessionActive
-          ? await widget.locationService.resumeTracking()
-          : await widget.locationService.startTracking();
+      try {
+        if (!await widget.locationService.requestTrackingPermission()) {
+          if (mounted) {
+            messenger?.showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Enable location services and grant location permission to track movement.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        await TrackingForegroundService.start();
+      } catch (error) {
+        if (mounted) {
+          messenger?.showSnackBar(SnackBar(content: Text(error.toString())));
+        }
+        return;
+      }
+      final isNewSession = !_trackingSessionActive;
+      late final bool started;
+      try {
+        started = _trackingSessionActive
+            ? await widget.locationService.resumeTracking()
+            : await widget.locationService.startTracking();
+      } catch (error) {
+        await TrackingForegroundService.stop();
+        if (mounted) {
+          messenger?.showSnackBar(
+            SnackBar(content: Text('Could not start location tracking: $error')),
+          );
+        }
+        return;
+      }
       if (!started && mounted) {
+        await TrackingForegroundService.stop();
         messenger?.showSnackBar(
           const SnackBar(
               content:
@@ -329,6 +430,8 @@ class _BeaconShellState extends State<BeaconShell> {
         );
         return;
       }
+      if (isNewSession) _tripSafePlaceSeconds.clear();
+      _pendingTripSave = null;
       _trackingSessionActive = true;
       _startTrackingClock();
       _updateTrackingState(true);
@@ -367,22 +470,56 @@ class _BeaconShellState extends State<BeaconShell> {
 
     final positions = widget.locationService.trackedPositions;
     final lastPosition = positions.isEmpty ? null : positions.last;
-    final savedTrip = widget.tripService.recordTripFromPositions(
+    final savedTrip = _pendingTripSave ??=
+        widget.tripService.recordTripFromPositions(
       positions,
       name: _safePlaceContaining(lastPosition)?.name,
       segmentStartIndices: widget.locationService.trackingSegmentStartIndices,
+      addToHistory: false,
     );
-    await widget.locationService.stopTracking();
-    _trackingSessionActive = false;
-
     final generation = ++_trackingSaveGeneration;
-    unawaited(_finishStoppingTracking(
-      savedTrip: savedTrip,
-      clearSharedLocation: _userSettings.familySharing,
-      generation: generation,
-      messenger: messenger,
-    ));
-    if (mounted) setState(() {});
+    var saved = false;
+    try {
+      await TrackingForegroundService.update(text: 'Saving your trip…');
+      await _finishStoppingTracking(
+        savedTrip: savedTrip,
+        clearSharedLocation: _userSettings.familySharing,
+        generation: generation,
+        messenger: messenger,
+      );
+      if (savedTrip != null) widget.tripService.addTrip(savedTrip);
+      _pendingTripSave = null;
+      saved = true;
+    } catch (error) {
+      widget.firestoreService.status.value = 'Trip save failed: $error';
+      if (mounted) {
+        messenger?.showSnackBar(
+          SnackBar(content: Text('Trip could not be saved: $error')),
+        );
+      }
+      try {
+        await TrackingForegroundService.update(
+          text: 'Trip not saved · tap End trip to retry',
+        );
+      } catch (notificationError) {
+        debugPrint(
+          'Could not update failed trip notification: $notificationError',
+        );
+      }
+    } finally {
+      if (saved) {
+        await widget.locationService.stopTracking();
+        _trackingSessionActive = false;
+        _tripSafePlaceSeconds.clear();
+        try {
+          await TrackingForegroundService.stop();
+        } catch (error) {
+          widget.firestoreService.status.value =
+              'Could not stop tracking notification: $error';
+        }
+      }
+      if (mounted) setState(() {});
+    }
   }
 
   void _updateTrackingState(bool enabled) {
@@ -421,6 +558,7 @@ class _BeaconShellState extends State<BeaconShell> {
       await widget.firestoreService.clearFamilyLocation(widget.user.uid);
     }
     await _saveTrackingSettings(generation);
+    await TrackingForegroundService.stop();
   }
 
   Future<void> _finishPausingTracking({
@@ -428,17 +566,80 @@ class _BeaconShellState extends State<BeaconShell> {
     required bool clearSharedLocation,
     required int generation,
   }) async {
-    await pause;
-    if (clearSharedLocation && generation == _trackingSaveGeneration) {
-      await widget.firestoreService.clearFamilyLocation(widget.user.uid);
+    try {
+      await pause;
+      if (clearSharedLocation && generation == _trackingSaveGeneration) {
+        await widget.firestoreService.clearFamilyLocation(widget.user.uid);
+      }
+      await _saveTrackingSettings(generation);
+    } catch (error) {
+      widget.firestoreService.status.value = 'Could not pause tracking: $error';
+      debugPrint('Could not finish pausing tracking: $error');
+    } finally {
+      try {
+        await TrackingForegroundService.stop();
+      } catch (error) {
+        widget.firestoreService.status.value =
+            'Could not stop tracking notification: $error';
+        debugPrint('Could not stop tracking notification: $error');
+      }
     }
-    await _saveTrackingSettings(generation);
   }
 
   void _startTrackingClock() {
-    _trackingTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() {});
+    _trackingTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+      final now = DateTime.now();
+      if (_lastTrackingNotificationUpdate == null ||
+          now.difference(_lastTrackingNotificationUpdate!) >=
+              const Duration(seconds: 5)) {
+        _lastTrackingNotificationUpdate = now;
+        unawaited(_updateTrackingNotification());
+      }
     });
+  }
+
+  Future<void> _updateTrackingNotification() async {
+    final duration = widget.locationService.trackingDuration;
+    final distanceMeters = widget.locationService.trackedDistanceMeters;
+    final averageSpeedKmh = duration.inSeconds == 0
+        ? 0.0
+        : distanceMeters / 1000 / (duration.inSeconds / 3600);
+    final location = _activeSafePlaceName ??
+        widget.locationService.lastLocationLabel;
+    final text = '${_formatTrackingDistance(distanceMeters)} · '
+        '${_formatTrackingDuration(duration)} · '
+        '${averageSpeedKmh.toStringAsFixed(1)} km/h · $location';
+    try {
+      await TrackingForegroundService.update(text: text);
+    } catch (error) {
+      widget.firestoreService.status.value =
+          'Tracking notification update failed: $error';
+      debugPrint('Could not update tracking notification: $error');
+    }
+  }
+
+  int get _activeSafePlaceVisitSeconds {
+    final lastPosition = _previousSafePlacePosition;
+    final trailingSeconds = _trackingEnabled && _activeSafePlaceId != null
+        ? (DateTime.now()
+                .difference(lastPosition?.timestamp ?? DateTime.now())
+                .inSeconds)
+            .clamp(0, 20)
+        : 0;
+    return _activeSafePlaceSeconds.round() + trailingSeconds;
+  }
+
+  int _safePlaceTripSeconds(String placeId) {
+    final trailingSeconds = _trackingEnabled && _activeSafePlaceId == placeId
+        ? (DateTime.now()
+                .difference(
+                    _previousSafePlacePosition?.timestamp ?? DateTime.now())
+                .inSeconds)
+            .clamp(0, 20)
+        : 0;
+    return (_tripSafePlaceSeconds[placeId] ?? 0) + trailingSeconds;
   }
 
   void _shareFamilyLocation(Position position) {
@@ -572,6 +773,7 @@ class _BeaconShellState extends State<BeaconShell> {
           userId: widget.user.uid,
           currentUser: widget.user,
           firestoreService: widget.firestoreService,
+          initialInvitations: _pendingInvitations,
         ),
       ),
     );
@@ -603,6 +805,27 @@ class _BeaconShellState extends State<BeaconShell> {
   @override
   Widget build(BuildContext context) {
     final theme = BeaconAppTheme.forPreset(widget.themePreset);
+    final activeVisitSeconds = _activeSafePlaceVisitSeconds;
+    final activeVisitStartedAt = _activeSafePlaceStartedAt;
+    final activeSafePlaceId = _activeSafePlaceId;
+    final activeSafePlaceName = _activeSafePlaceName;
+    final currentSafePlaceVisit = activeSafePlaceId == null ||
+            activeSafePlaceName == null ||
+            activeVisitStartedAt == null
+        ? null
+        : SafePlaceVisit(
+            id: 'active-$activeSafePlaceId',
+            placeId: activeSafePlaceId,
+            placeName: activeSafePlaceName,
+            startedAt: activeVisitStartedAt,
+            endedAt: activeVisitStartedAt.add(
+              Duration(seconds: activeVisitSeconds),
+            ),
+            durationSeconds: activeVisitSeconds,
+          );
+    final currentSafePlaceTripSeconds = activeSafePlaceId == null
+        ? 0
+        : _safePlaceTripSeconds(activeSafePlaceId);
     final pages = [
       HomePage(
         trackingEnabled: _trackingEnabled,
@@ -621,8 +844,18 @@ class _BeaconShellState extends State<BeaconShell> {
         trackingStartedAt: widget.locationService.trackingStartedAt,
         trackingDuration: widget.locationService.trackingDuration,
         onEndTrip: _endTrip,
+        currentSafePlaceName: _trackingEnabled ? activeSafePlaceName : null,
+        currentSafePlaceTripSeconds: currentSafePlaceTripSeconds,
       ),
-      InsightsPage(tripService: widget.tripService),
+      InsightsPage(
+        tripService: widget.tripService,
+        safePlaceVisits: _safePlaceVisits,
+        activeSafePlaceVisit: currentSafePlaceVisit,
+        trackingSessionActive: _trackingSessionActive,
+        trackingStartedAt: widget.locationService.trackingStartedAt,
+        liveDistanceMeters: widget.locationService.trackedDistanceMeters,
+        liveTrackingDuration: widget.locationService.trackingDuration,
+      ),
       MapPage(
         active: _selectedIndex == 2,
         trackingEnabled: _trackingEnabled,
@@ -638,7 +871,7 @@ class _BeaconShellState extends State<BeaconShell> {
         locationService: widget.locationService,
         familySharing: _userSettings.familySharing,
         activeSafePlaceId: _activeSafePlaceId,
-        activeSafePlaceSeconds: _activeSafePlaceSeconds.round(),
+        activeSafePlaceSeconds: activeVisitSeconds,
         onFamilySharingChanged: _setFamilySharing,
       ),
       ActivityPage(tripService: widget.tripService),
@@ -764,4 +997,15 @@ class _SelectedNavIcon extends StatelessWidget {
       color: color,
     );
   }
+}
+
+String _formatTrackingDistance(double meters) => meters >= 1000
+    ? '${(meters / 1000).toStringAsFixed(1)} km'
+    : '${meters.round()} m';
+
+String _formatTrackingDuration(Duration duration) {
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  if (hours > 0) return '${hours}h ${minutes}m';
+  return '${duration.inMinutes} min';
 }

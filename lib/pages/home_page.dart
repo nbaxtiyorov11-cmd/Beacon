@@ -20,6 +20,8 @@ class HomePage extends StatelessWidget {
     this.onEndTrip,
     this.pendingNotificationCount = 0,
     this.locationLabel,
+    this.currentSafePlaceName,
+    this.currentSafePlaceTripSeconds = 0,
     super.key,
   });
 
@@ -38,6 +40,8 @@ class HomePage extends StatelessWidget {
   final VoidCallback? onEndTrip;
   final int pendingNotificationCount;
   final String? locationLabel;
+  final String? currentSafePlaceName;
+  final int currentSafePlaceTripSeconds;
 
   @override
   Widget build(BuildContext context) {
@@ -260,6 +264,8 @@ class HomePage extends StatelessWidget {
           distanceMeters: liveTrackingDistanceMeters,
           trackingStartedAt: trackingStartedAt,
           trackingDuration: trackingDuration,
+          currentSafePlaceName: currentSafePlaceName,
+          currentSafePlaceTripSeconds: currentSafePlaceTripSeconds,
         ),
         const SizedBox(height: 12),
         Row(
@@ -269,7 +275,7 @@ class HomePage extends StatelessWidget {
                 label: 'DISTANCE',
                 value: _formatDistance(todayDistance),
                 icon: Icons.straighten_rounded,
-                tint: BeaconColors.blue,
+                tint: const Color.fromARGB(255, 5, 57, 103),
               ),
             ),
             const SizedBox(width: 8),
@@ -278,7 +284,7 @@ class HomePage extends StatelessWidget {
                 label: 'MOVING',
                 value: _formatDuration(todayDuration),
                 icon: Icons.schedule_rounded,
-                tint: BeaconColors.coral,
+                tint: const Color.fromARGB(255, 194, 33, 16),
               ),
             ),
             const SizedBox(width: 8),
@@ -287,7 +293,7 @@ class HomePage extends StatelessWidget {
                 label: 'TRIPS',
                 value: '$todayTripCount',
                 icon: Icons.route_outlined,
-                tint: BeaconColors.forest,
+                tint: const Color.fromARGB(255, 12, 83, 59),
               ),
             ),
           ],
@@ -437,6 +443,8 @@ class _TrackingPanel extends StatelessWidget {
     required this.trackingStartedAt,
     required this.trackingDuration,
     this.locationLabel,
+    this.currentSafePlaceName,
+    this.currentSafePlaceTripSeconds = 0,
   });
 
   final bool trackingEnabled;
@@ -447,6 +455,8 @@ class _TrackingPanel extends StatelessWidget {
   final double distanceMeters;
   final DateTime? trackingStartedAt;
   final Duration trackingDuration;
+  final String? currentSafePlaceName;
+  final int currentSafePlaceTripSeconds;
 
   @override
   Widget build(BuildContext context) {
@@ -523,13 +533,40 @@ class _TrackingPanel extends StatelessWidget {
           Text(
             trackingSessionActive
                 ? trackingEnabled
-                    ? '${_formatDuration(duration)} active · ${locationLabel ?? 'Waiting for GPS'}'
+                    ? '${_formatDuration(duration)} active'
                     : '${_formatDuration(duration)} active · Trip paused'
                 : 'Movement recording is paused',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Color(0xFFCFD9D2), fontSize: 12),
           ),
+          if (trackingSessionActive && trackingEnabled) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.location_on_rounded,
+                  size: 15,
+                  color: BeaconColors.lime,
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    currentSafePlaceName == null
+                        ? 'Outside a saved place · ${locationLabel ?? 'Waiting for GPS'}'
+                        : 'At $currentSafePlaceName · ${_formatDuration(Duration(seconds: currentSafePlaceTripSeconds))} this trip',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           if (trackingSessionActive && onEndTrip != null) ...[
             LayoutBuilder(

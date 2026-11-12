@@ -17,6 +17,11 @@ service cloud.firestore {
         allow get, list, create, update, delete: if request.auth != null
           && request.auth.uid == userId;
       }
+
+      match /safePlaceVisits/{visitId} {
+        allow get, list, create: if request.auth != null
+          && request.auth.uid == userId;
+      }
     }
 
     match /publicProfiles/{email} {

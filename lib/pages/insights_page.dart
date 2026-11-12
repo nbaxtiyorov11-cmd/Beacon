@@ -5,9 +5,24 @@ import '../theme/beacon_theme.dart';
 import '../widgets/beacon_widgets.dart';
 
 class InsightsPage extends StatefulWidget {
-  const InsightsPage({required this.tripService, super.key});
+  const InsightsPage({
+    required this.tripService,
+    this.safePlaceVisits = const [],
+    this.activeSafePlaceVisit,
+    this.trackingSessionActive = false,
+    this.trackingStartedAt,
+    this.liveDistanceMeters = 0,
+    this.liveTrackingDuration = Duration.zero,
+    super.key,
+  });
 
   final TripService tripService;
+  final List<SafePlaceVisit> safePlaceVisits;
+  final SafePlaceVisit? activeSafePlaceVisit;
+  final bool trackingSessionActive;
+  final DateTime? trackingStartedAt;
+  final double liveDistanceMeters;
+  final Duration liveTrackingDuration;
 
   @override
   State<InsightsPage> createState() => _InsightsPageState();
@@ -51,7 +66,43 @@ class _InsightsPageState extends State<InsightsPage> {
         (sum, trip) => sum + trip.distanceMeters,
       );
 
-  List<double> _chartValues(DateTime now) {
+  int _safePlaceSecondsBetween(DateTime start, DateTime end) {
+    return [
+      ...widget.safePlaceVisits,
+      if (widget.activeSafePlaceVisit case final active?) active,
+    ].fold<int>(
+      0,
+      (total, visit) => total + visit.secondsOverlapping(start, end),
+    );
+  }
+
+  Map<String, ({String name, int seconds})> _safePlaceSecondsByPlace(
+    DateTime start,
+    DateTime end,
+  ) {
+    final totals = <String, ({String name, int seconds})>{};
+    for (final visit in [
+      ...widget.safePlaceVisits,
+      if (widget.activeSafePlaceVisit case final active?) active,
+    ]) {
+      final seconds = visit.secondsOverlapping(start, end);
+      if (seconds == 0 && visit != widget.activeSafePlaceVisit) {
+        continue;
+      }
+      final current = totals[visit.placeId];
+      totals[visit.placeId] = (
+        name: visit.placeName,
+        seconds: (current?.seconds ?? 0) + seconds,
+      );
+    }
+    return totals;
+  }
+
+  List<double> _chartValues(
+    DateTime now, {
+    required DateTime? liveStartedAt,
+    required double liveDistanceMeters,
+  }) {
     final start = _periodStart(now);
     final end = _periodEnd(now);
     final bucketCount = switch (_period) {
@@ -69,7 +120,12 @@ class _InsightsPageState extends State<InsightsPage> {
           ? DateTime(start.year, index + 2)
           : start.add(
               Duration(days: (periodDays * (index + 1) / bucketCount).floor()));
-      return _distanceOf(_tripsBetween(bucketStart, bucketEnd));
+      final liveDistance = liveStartedAt != null &&
+              !liveStartedAt.isBefore(bucketStart) &&
+              liveStartedAt.isBefore(bucketEnd)
+          ? liveDistanceMeters
+          : 0.0;
+      return _distanceOf(_tripsBetween(bucketStart, bucketEnd)) + liveDistance;
     });
   }
 
@@ -107,22 +163,47 @@ class _InsightsPageState extends State<InsightsPage> {
       _previousPeriodStart(now),
       currentStart,
     );
-    final distanceMeters = _distanceOf(currentTrips);
+    final liveTripInPeriod = widget.trackingSessionActive &&
+        widget.trackingStartedAt != null &&
+        !widget.trackingStartedAt!.isBefore(currentStart) &&
+        widget.trackingStartedAt!.isBefore(currentEnd);
+    final livePeriodDistance =
+        liveTripInPeriod ? widget.liveDistanceMeters : 0.0;
+    final distanceMeters = _distanceOf(currentTrips) + livePeriodDistance;
+    final tripCount = currentTrips.length + (liveTripInPeriod ? 1 : 0);
     final totalDistance = distanceMeters / 1000;
     final previousDistance = _distanceOf(previousTrips);
     final changePercent = previousDistance == 0
         ? null
         : ((distanceMeters - previousDistance) / previousDistance * 100)
             .round();
-    final chartValues = _chartValues(now);
-    final chartLabels = _chartLabels(now);
-    final tripMinutes = currentTrips.fold<int>(
-      0,
-      (sum, trip) => sum + trip.totalMinutes.round(),
+    final chartValues = _chartValues(
+      now,
+      liveStartedAt: liveTripInPeriod ? widget.trackingStartedAt : null,
+      liveDistanceMeters: widget.liveDistanceMeters,
     );
+    final chartLabels = _chartLabels(now);
+    final tripMinutes = currentTrips.fold<double>(
+          0,
+          (sum, trip) => sum + trip.totalMinutes,
+        ) +
+        (liveTripInPeriod ? widget.liveTrackingDuration.inSeconds / 60 : 0);
     final averageSpeed =
         tripMinutes == 0 ? 0.0 : distanceMeters / 1000 / (tripMinutes / 60);
+    final averageTripDistance =
+        tripCount == 0 ? 0.0 : distanceMeters / tripCount / 1000;
     final busiestDay = _busiestDay(currentTrips);
+    final todayStart = _dateOnly(now);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+    final todaySafePlaceTotals = _safePlaceSecondsByPlace(todayStart, todayEnd)
+        .values
+        .toList()
+      ..sort((first, second) => second.seconds.compareTo(first.seconds));
+    final periodSafePlaceSeconds =
+        _safePlaceSecondsBetween(currentStart, currentEnd);
+    final periodSafePlaceTotals =
+        _safePlaceSecondsByPlace(currentStart, currentEnd).values.toList()
+          ..sort((first, second) => second.seconds.compareTo(first.seconds));
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
       children: [
@@ -226,7 +307,7 @@ class _InsightsPageState extends State<InsightsPage> {
                   ),
                   const Spacer(),
                   Text(
-                    '${currentTrips.length} ${currentTrips.length == 1 ? 'trip' : 'trips'}',
+                    '$tripCount ${tripCount == 1 ? 'trip' : 'trips'}',
                     style: const TextStyle(
                       color: Color(0xFFCFD9D2),
                       fontSize: 12,
@@ -272,6 +353,60 @@ class _InsightsPageState extends State<InsightsPage> {
           ),
         ),
         const SizedBox(height: 23),
+        const Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Saved-place time today',
+                style: TextStyle(
+                  color: BeaconColors.ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Icon(Icons.place_rounded, color: BeaconColors.forest, size: 19),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SurfacePanel(
+          padding: 14,
+          child: todaySafePlaceTotals.isEmpty
+              ? const _InsightRow(
+                  icon: Icons.home_outlined,
+                  color: BeaconColors.forest,
+                  title: 'No saved-place time yet',
+                  detail:
+                      'Time inside your saved areas will appear here while tracking is active.',
+                )
+              : Column(
+                  children: [
+                    for (var index = 0;
+                        index < todaySafePlaceTotals.length;
+                        index++) ...[
+                      if (index > 0) const Divider(height: 18),
+                      _InsightRow(
+                        icon: Icons.place_rounded,
+                        color: index == 0
+                            ? BeaconColors.forest
+                            : BeaconColors.blue,
+                        title: todaySafePlaceTotals[index].name,
+                        detail:
+                            '${_formatStayDuration(todaySafePlaceTotals[index].seconds)} today',
+                      ),
+                    ],
+                    const Divider(height: 18),
+                    _InsightRow(
+                      icon: Icons.schedule_rounded,
+                      color: BeaconColors.coral,
+                      title: 'Total time at saved places',
+                      detail:
+                          '${_formatStayDuration(todaySafePlaceTotals.fold<int>(0, (total, place) => total + place.seconds))} today',
+                    ),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 23),
         Row(
           children: [
             const Expanded(
@@ -285,7 +420,7 @@ class _InsightsPageState extends State<InsightsPage> {
               ),
             ),
             Text(
-              '${currentTrips.length} ${currentTrips.length == 1 ? 'trip' : 'trips'}',
+              '$tripCount ${tripCount == 1 ? 'trip' : 'trips'}',
               style: const TextStyle(
                 color: BeaconColors.muted,
                 fontSize: 12,
@@ -307,7 +442,7 @@ class _InsightsPageState extends State<InsightsPage> {
                     : 'Movement total',
                 detail: totalDistance == 0
                     ? 'Start a tracked trip to build your first summary.'
-                    : 'You covered ${totalDistance.toStringAsFixed(1)} km across ${currentTrips.length} trip${currentTrips.length == 1 ? '' : 's'} this ${_period.toLowerCase()}.',
+                    : 'You covered ${totalDistance.toStringAsFixed(1)} km across $tripCount trip${tripCount == 1 ? '' : 's'} this ${_period.toLowerCase()}.',
               ),
               const Divider(height: 18, color: BeaconColors.line),
               _InsightRow(
@@ -328,6 +463,24 @@ class _InsightsPageState extends State<InsightsPage> {
                 detail: tripMinutes == 0
                     ? 'No timed trip data in this period yet.'
                     : '${averageSpeed.toStringAsFixed(1)} km/h across timed trips.',
+              ),
+              const Divider(height: 18, color: BeaconColors.line),
+              _InsightRow(
+                icon: Icons.straighten_rounded,
+                color: BeaconColors.blue,
+                title: 'Average trip distance',
+                detail: tripCount == 0
+                    ? 'A per-trip average will appear after your first trip.'
+                    : '${averageTripDistance.toStringAsFixed(2)} km per trip this ${_period.toLowerCase()}.',
+              ),
+              const Divider(height: 18, color: BeaconColors.line),
+              _InsightRow(
+                icon: Icons.home_work_outlined,
+                color: BeaconColors.coral,
+                title: 'Time at saved places',
+                detail: periodSafePlaceSeconds == 0
+                    ? 'No saved-place visits recorded this ${_period.toLowerCase()} yet.'
+                    : '${_formatStayDuration(periodSafePlaceSeconds)} at saved places this ${_period.toLowerCase()}${periodSafePlaceTotals.isEmpty ? '' : ' · longest: ${periodSafePlaceTotals.first.name}'}.',
               ),
             ],
           ),
@@ -543,9 +696,8 @@ class _DistanceChart extends StatelessWidget {
                       alignment: Alignment.bottomCenter,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 240),
-                        height: maximum == 0
-                            ? 3
-                            : 8 + values[index] / maximum * 64,
+                        height:
+                            maximum == 0 ? 3 : 8 + values[index] / maximum * 64,
                         width: 18,
                         decoration: BoxDecoration(
                           color: _chartBarColor(index, values[index], maximum),
@@ -609,6 +761,14 @@ String _weekdayName(int weekday) => const [
       'Saturday',
       'Sunday',
     ][weekday - 1];
+
+String _formatStayDuration(int seconds) {
+  final duration = Duration(seconds: seconds);
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  if (hours > 0) return '${hours}h ${minutes}m';
+  return '${duration.inMinutes}m';
+}
 
 String _weekdayShortName(int weekday) => const [
       'M',

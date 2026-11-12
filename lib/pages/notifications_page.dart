@@ -15,6 +15,7 @@ class NotificationsPage extends StatefulWidget {
     required this.userId,
     required this.currentUser,
     required this.firestoreService,
+    this.initialInvitations = const [],
     this.themePreset = BeaconThemePreset.active,
     super.key,
   });
@@ -22,6 +23,7 @@ class NotificationsPage extends StatefulWidget {
   final String userId;
   final AuthUser currentUser;
   final FirestoreService firestoreService;
+  final List<FamilyInvitation> initialInvitations;
   final BeaconThemePreset themePreset;
 
   @override
@@ -166,24 +168,33 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 }).toList();
                 return StreamBuilder<List<FamilyInvitation>>(
                   stream: _invitations,
+                  initialData: widget.initialInvitations,
                   builder: (context, invitationSnapshot) {
                     final invitations =
                         invitationSnapshot.data ?? const <FamilyInvitation>[];
-                    final visibleAlerts = _filter == _NotificationFilter.requests
-                        ? const <FamilyContact>[]
-                        : activeAlerts;
+                    final visibleAlerts =
+                        _filter == _NotificationFilter.requests
+                            ? const <FamilyContact>[]
+                            : activeAlerts;
                     final visibleInvitations =
                         _filter == _NotificationFilter.emergency
                             ? const <FamilyInvitation>[]
                             : invitations;
-                    final hasNotifications =
-                        visibleAlerts.isNotEmpty || visibleInvitations.isNotEmpty;
+                    final hasNotifications = visibleAlerts.isNotEmpty ||
+                        visibleInvitations.isNotEmpty;
+                    final isLoading = !hasNotifications &&
+                        !snapshot.hasError &&
+                        !invitationSnapshot.hasError &&
+                        (snapshot.connectionState == ConnectionState.waiting ||
+                            invitationSnapshot.connectionState ==
+                                ConnectionState.waiting);
                     return ListView(
                       padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
                       children: [
                         _NotificationFilterBar(
                           selected: _filter,
-                          onChanged: (filter) => setState(() => _filter = filter),
+                          onChanged: (filter) =>
+                              setState(() => _filter = filter),
                           alertCount: activeAlerts.length,
                           requestCount: invitations.length,
                         ),
@@ -199,9 +210,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
                           ),
                         if (!hasNotifications &&
                             !snapshot.hasError &&
-                            !invitationSnapshot.hasError)
+                            !invitationSnapshot.hasError &&
+                            isLoading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 24),
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                        if (!hasNotifications &&
+                            !snapshot.hasError &&
+                            !invitationSnapshot.hasError &&
+                            !isLoading)
                           Padding(
-                            padding: const EdgeInsets.only(top: 52),
+                            padding: const EdgeInsets.only(top: 24),
                             child: Column(
                               children: [
                                 Container(
@@ -272,8 +292,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                         height: 1, color: BeaconColors.line),
                                   _InvitationTile(
                                     invitation: visibleInvitations[index],
-                                    busy: _respondingToInvitations.contains(
-                                        visibleInvitations[index].id),
+                                    busy: _respondingToInvitations
+                                        .contains(visibleInvitations[index].id),
                                     onAccept: () => _respondToInvitation(
                                         visibleInvitations[index],
                                         accept: true),
@@ -315,12 +335,24 @@ class _NotificationFilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final filters = [
-      (_NotificationFilter.all, 'All', Icons.inbox_rounded,
-          alertCount + requestCount),
-      (_NotificationFilter.emergency, 'Emergency', Icons.sos_rounded,
-          alertCount),
-      (_NotificationFilter.requests, 'Requests', Icons.person_add_alt_1_rounded,
-          requestCount),
+      (
+        _NotificationFilter.all,
+        'All',
+        Icons.inbox_rounded,
+        alertCount + requestCount
+      ),
+      (
+        _NotificationFilter.emergency,
+        'Emergency',
+        Icons.sos_rounded,
+        alertCount
+      ),
+      (
+        _NotificationFilter.requests,
+        'Requests',
+        Icons.person_add_alt_1_rounded,
+        requestCount
+      ),
     ];
     return Container(
       padding: const EdgeInsets.all(4),

@@ -779,6 +779,30 @@ class FirestoreService {
             }).toList());
   }
 
+  Stream<List<SafePlaceVisit>> watchSafePlaceVisits(String uid) {
+    final firestore = _ensureReady();
+    if (firestore == null) return Stream.value(const []);
+
+    return firestore
+        .collection('users')
+        .doc(uid)
+        .collection('safePlaceVisits')
+        .orderBy('startedAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((document) {
+              final data = document.data();
+              return SafePlaceVisit(
+                id: document.id,
+                placeId: data['placeId'] as String? ?? '',
+                placeName: data['placeName'] as String? ?? 'Safe place',
+                startedAt: (data['startedAt'] as Timestamp).toDate(),
+                endedAt: (data['endedAt'] as Timestamp).toDate(),
+                durationSeconds:
+                    (data['durationSeconds'] as num?)?.toInt() ?? 0,
+              );
+            }).toList());
+  }
+
   Future<void> saveSafePlace(String uid, SafePlace place) async {
     final firestore = _ensureReady();
     if (firestore == null) throw StateError('Firestore is not initialized.');
@@ -806,23 +830,37 @@ class FirestoreService {
   Future<void> recordSafePlaceVisit({
     required String userId,
     required String placeId,
+    required String placeName,
     required int visitSeconds,
-    required DateTime visitedAt,
+    required DateTime startedAt,
+    required DateTime endedAt,
   }) async {
     if (visitSeconds <= 0) return;
     final firestore = _ensureReady();
     if (firestore == null) throw StateError('Firestore is not initialized.');
     await _retryUnavailable(
-      () => firestore
-          .collection('users')
-          .doc(userId)
-          .collection('safePlaces')
-          .doc(placeId)
-          .update({
-        'totalVisitSeconds': FieldValue.increment(visitSeconds),
-        'lastVisitSeconds': visitSeconds,
-        'lastVisitedAt': Timestamp.fromDate(visitedAt),
-      }),
+      () {
+        final user = firestore.collection('users').doc(userId);
+        final placeRef = user.collection('safePlaces').doc(placeId);
+        final visitRef = user.collection('safePlaceVisits').doc();
+        return firestore.runTransaction((transaction) async {
+          final placeSnapshot = await transaction.get(placeRef);
+          if (placeSnapshot.exists) {
+            transaction.update(placeRef, {
+              'totalVisitSeconds': FieldValue.increment(visitSeconds),
+              'lastVisitSeconds': visitSeconds,
+              'lastVisitedAt': Timestamp.fromDate(endedAt),
+            });
+          }
+          transaction.set(visitRef, {
+            'placeId': placeId,
+            'placeName': placeName,
+            'startedAt': Timestamp.fromDate(startedAt),
+            'endedAt': Timestamp.fromDate(endedAt),
+            'durationSeconds': visitSeconds,
+          });
+        });
+      },
     );
   }
 
@@ -1302,13 +1340,13 @@ class FirestoreService {
       final firestore = _ensureReady();
       if (firestore == null) {
         status.value = 'Trip not saved: Firestore not initialized';
-        debugPrint('Firestore not initialized; skipping trip save.');
-        return;
+        throw StateError('Firestore is not initialized.');
       }
 
-      final batch = firestore.batch();
-      final tripRef = firestore.collection('trips').doc();
-      batch.set(tripRef, {
+      final tripRef =
+          firestore.collection('trips').doc('${uid}_${trip.id}');
+      final statsRef = firestore.collection('activityStats').doc(uid);
+      final tripData = {
         'uid': uid,
         'startedAt': Timestamp.fromDate(trip.startedAt),
         'endedAt': Timestamp.fromDate(trip.endedAt),
@@ -1326,26 +1364,35 @@ class FirestoreService {
             )
             .toList(),
         'createdAt': FieldValue.serverTimestamp(),
-      });
-      batch.set(
-          firestore.collection('activityStats').doc(uid),
-          {
+      };
+      await _retryUnavailable(() => firestore.runTransaction((transaction) async {
+            if ((await transaction.get(tripRef)).exists) return;
+            transaction.set(tripRef, tripData);
+            transaction.set(
+              statsRef,
+              {
             'tripCount': FieldValue.increment(1),
             'distanceMeters': FieldValue.increment(trip.distanceMeters),
             'movingMinutes': FieldValue.increment(trip.totalMinutes.round()),
             'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true));
-      await _retryUnavailable(batch.commit);
+              },
+              SetOptions(merge: true),
+            );
+          }));
 
       status.value = 'Trip saved to Firestore';
       debugPrint('Saved trip for $uid');
     } on FirebaseException catch (error) {
       status.value = 'Trip save failed: $error';
       debugPrint('Failed to save trip: $error');
+      rethrow;
     } on PlatformException catch (error) {
       status.value = 'Trip save failed: $error';
       debugPrint('Failed to save trip (platform): $error');
+      rethrow;
+    } catch (error) {
+      status.value = 'Trip save failed: $error';
+      rethrow;
     }
   }
 }

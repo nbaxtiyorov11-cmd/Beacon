@@ -24,7 +24,6 @@ class HeatmapPoint {
   final LatLng point;
   final int weight;
 }
-
 class MapPage extends StatefulWidget {
   const MapPage({
     required this.active,

@@ -28,12 +28,17 @@ import 'package:beacon/services/location_service.dart';
 import 'package:beacon/services/trip_service.dart';
 import 'package:beacon/theme/beacon_theme.dart';
 
-Position _gpsPosition(double latitude, double longitude, DateTime timestamp) =>
+Position _gpsPosition(
+  double latitude,
+  double longitude,
+  DateTime timestamp, {
+  double accuracy = 5,
+}) =>
     Position(
       latitude: latitude,
       longitude: longitude,
       timestamp: timestamp,
-      accuracy: 5,
+      accuracy: accuracy,
       altitude: 0,
       altitudeAccuracy: 0,
       heading: 0,
@@ -67,6 +72,32 @@ void main() {
       name: place.name,
     );
     expect(trip?.title, 'Home');
+  });
+
+  test('safe-place visit history splits duration across date boundaries', () {
+    final visit = SafePlaceVisit(
+      id: 'visit',
+      placeId: 'home',
+      placeName: 'Home',
+      startedAt: DateTime.utc(2026, 11, 4, 23, 30),
+      endedAt: DateTime.utc(2026, 11, 5, 0, 30),
+      durationSeconds: 3600,
+    );
+
+    expect(
+      visit.secondsOverlapping(
+        DateTime.utc(2026, 11, 4),
+        DateTime.utc(2026, 11, 5),
+      ),
+      1800,
+    );
+    expect(
+      visit.secondsOverlapping(
+        DateTime.utc(2026, 11, 5),
+        DateTime.utc(2026, 11, 6),
+      ),
+      1800,
+    );
   });
 
   test('heatmap uses only trip points in the selected time window', () {
@@ -164,6 +195,41 @@ void main() {
     expect(trip.points.map((point) => point.segmentStart), [true, false, true]);
   });
 
+  test('trip recording rejects inaccurate jitter and impossible GPS jumps', () {
+    final startTime = DateTime.utc(2026, 10, 18, 10);
+    final positions = [
+      _gpsPosition(41.3, 69.2, startTime),
+      _gpsPosition(
+        41.300002,
+        69.2,
+        startTime.add(const Duration(seconds: 2)),
+        accuracy: 25,
+      ),
+      _gpsPosition(
+        41.5,
+        69.5,
+        startTime.add(const Duration(seconds: 4)),
+      ),
+      _gpsPosition(
+        41.3002,
+        69.2,
+        startTime.add(const Duration(seconds: 10)),
+      ),
+    ];
+
+    final trip = TripService().recordTripFromPositions(positions)!;
+    final expectedDistance = Geolocator.distanceBetween(
+      positions.first.latitude,
+      positions.first.longitude,
+      positions.last.latitude,
+      positions.last.longitude,
+    );
+
+    expect(trip.points, hasLength(2));
+    expect(trip.distanceMeters, closeTo(expectedDistance, 0.1));
+    expect(trip.movingSeconds, 10);
+  });
+
   test('profile refresh payload leaves saved settings untouched', () {
     final payload = FirestoreService.userProfileUpdateData(
       const AuthUser(uid: 'alex-id', email: 'alex@example.com'),
@@ -184,6 +250,7 @@ void main() {
       BeaconApp(
         authService: authService,
         locationService: locationService,
+        trackingNotificationsEnabled: false,
       ),
     );
     await tester.pumpAndSettle();
@@ -209,6 +276,7 @@ void main() {
     await tester.pumpWidget(BeaconApp(
       authService: authService,
       locationService: locationService,
+      trackingNotificationsEnabled: false,
     ));
     await tester.pumpAndSettle();
 
@@ -246,6 +314,7 @@ void main() {
       authService: authService,
       locationService: _FakeLocationService(),
       firestoreService: firestoreService,
+      trackingNotificationsEnabled: false,
     ));
     await tester.pumpAndSettle();
 
@@ -325,7 +394,11 @@ void main() {
     );
     final locationService = _FakeLocationService();
     await tester.pumpWidget(
-      BeaconApp(authService: authService, locationService: locationService),
+      BeaconApp(
+        authService: authService,
+        locationService: locationService,
+        trackingNotificationsEnabled: false,
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -540,6 +613,8 @@ void main() {
       home: Scaffold(body: InsightsPage(tripService: tripService)),
     ));
     await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
 
     expect(find.text('2.5'), findsOneWidget);
     expect(find.text('No previous period data to compare yet'), findsOneWidget);
@@ -547,6 +622,8 @@ void main() {
     expect(find.textContaining('You covered 2.5 km across 1 trip'),
         findsOneWidget);
 
+    await tester.drag(find.byType(ListView), const Offset(0, 600));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Month'));
     await tester.pumpAndSettle();
     expect(find.text('MONTHLY DISTANCE'), findsOneWidget);
@@ -965,6 +1042,7 @@ void main() {
           currentUser:
               const AuthUser(uid: 'user-1', email: 'owner@example.com'),
           firestoreService: firestoreService,
+          initialInvitations: const [invitation],
         ),
       ),
     );
@@ -1123,6 +1201,9 @@ class _FakeLocationService extends LocationService {
 
   @override
   bool get trackingEnabled => _trackingEnabled;
+
+  @override
+  Future<bool> requestTrackingPermission() async => true;
 
   @override
   double get trackedDistanceMeters => _hasActiveTrip ? 1234 : 0;
