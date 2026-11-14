@@ -223,7 +223,11 @@ service cloud.firestore {
     match /trips/{tripId} {
       allow create: if request.auth != null
         && request.resource.data.uid == request.auth.uid;
-      allow read: if request.auth != null
+      allow get: if request.auth != null
+        && ((!exists(/databases/$(database)/documents/trips/$(tripId))
+              && tripId.matches('^.+_[0-9]+$'))
+          || resource.data.uid == request.auth.uid);
+      allow list: if request.auth != null
         && resource.data.uid == request.auth.uid;
       allow update, delete: if request.auth != null
         && resource.data.uid == request.auth.uid;

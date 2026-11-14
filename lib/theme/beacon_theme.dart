@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 abstract final class BeaconColors {
@@ -72,6 +73,12 @@ class BeaconAppTheme {
   final Color mutedTextColor;
   final Color borderColor;
   final Color tagColor;
+
+  ImageProvider<Object> backgroundImageProvider({int? maxWidth}) =>
+      CachedNetworkImageProvider(
+        backgroundImageUrl,
+        maxWidth: maxWidth ?? 1200,
+      );
 
   static const List<BeaconAppTheme> presets = [
     BeaconAppTheme(

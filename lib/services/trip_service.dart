@@ -7,11 +7,13 @@ class TripLocation {
     required this.latitude,
     required this.longitude,
     this.segmentStart = false,
+    this.accuracyMeters,
   });
 
   final double latitude;
   final double longitude;
   final bool segmentStart;
+  final double? accuracyMeters;
 }
 
 class SafePlace {
@@ -211,6 +213,7 @@ class TripService {
             latitude: point.latitude,
             longitude: point.longitude,
             segmentStart: true,
+            accuracyMeters: point.accuracy,
           ),
         ],
         distanceMeters: 0,
@@ -236,6 +239,7 @@ class TripService {
         latitude: position.latitude,
         longitude: position.longitude,
         segmentStart: segmentStart,
+        accuracyMeters: position.accuracy,
       ));
       if (segmentStart) continue;
 

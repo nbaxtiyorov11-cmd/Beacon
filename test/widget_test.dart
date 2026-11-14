@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:beacon/auth/auth_service.dart';
 import 'package:beacon/main.dart';
@@ -130,7 +131,111 @@ void main() {
 
     expect(points, hasLength(2));
     expect(
-        points.any((point) => point.point == const LatLng(41.3, 69.2)), isTrue);
+      points.any(
+        (point) =>
+            const Distance().as(
+              LengthUnit.Meter,
+              const LatLng(41.3, 69.2),
+              point.point,
+            ) <
+            MapPage.heatmapCellRadiusMeters,
+      ),
+      isTrue,
+    );
+  });
+
+  test('heatmap uses meter-scale cells and counts distinct trips', () {
+    final now = DateTime(2026, 10, 17);
+    final trips = [
+      for (final id in ['first', 'second'])
+        TripEntry(
+          id: id,
+          startedAt: now,
+          endedAt: now,
+          points: const [
+            TripLocation(
+              latitude: 41.3005,
+              longitude: 69.2005,
+              segmentStart: true,
+            ),
+            TripLocation(latitude: 41.30051, longitude: 69.20051),
+            TripLocation(latitude: 41.30052, longitude: 69.20052),
+          ],
+          distanceMeters: 100,
+          averageSpeedKmh: 3,
+        ),
+    ];
+
+    final points = MapPage.heatmapPoints(
+      trips,
+      now: now,
+      window: HeatmapWindow.all,
+    );
+
+    expect(points, hasLength(1));
+    expect(points.single.weight, 2);
+    expect(
+      const Distance().as(
+        LengthUnit.Meter,
+        const LatLng(41.3005, 69.2005),
+        points.single.point,
+      ),
+      lessThan(MapPage.heatmapCellRadiusMeters),
+    );
+    expect(MapPage.heatmapCellVertices(points.single.point), hasLength(6));
+  });
+
+  test('heatmap ignores inaccurate fixes and isolated GPS samples', () {
+    final now = DateTime(2026, 10, 17);
+    final points = MapPage.heatmapPoints(
+      [
+        TripEntry(
+          id: 'good',
+          startedAt: now,
+          endedAt: now,
+          points: const [
+            TripLocation(
+              latitude: 41.3,
+              longitude: 69.2,
+              segmentStart: true,
+              accuracyMeters: 8,
+            ),
+            TripLocation(
+              latitude: 41.3001,
+              longitude: 69.2001,
+              accuracyMeters: 10,
+            ),
+            TripLocation(
+              latitude: 41.31,
+              longitude: 69.21,
+              segmentStart: true,
+              accuracyMeters: 80,
+            ),
+          ],
+          distanceMeters: 100,
+          averageSpeedKmh: 3,
+        ),
+        TripEntry(
+          id: 'single-fix',
+          startedAt: now,
+          endedAt: now,
+          points: const [
+            TripLocation(
+              latitude: 41.4,
+              longitude: 69.3,
+              segmentStart: true,
+            ),
+          ],
+          distanceMeters: 0,
+          averageSpeedKmh: 0,
+        ),
+      ],
+      now: now,
+      window: HeatmapWindow.all,
+    );
+
+    expect(points, hasLength(1));
+    expect(points.single.weight, 1);
   });
 
   test('tracking trace filters GPS noise and keeps newest path points', () {
@@ -414,6 +519,44 @@ void main() {
     await tester.tap(find.text('Insights'));
     await tester.pumpAndSettle();
     expect(find.text('Your insights'), findsOneWidget);
+    await authService.dispose();
+  });
+
+  testWidgets('cached theme appears before Firestore settings load', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'beacon.themePreset.alex-id': 'winter',
+    });
+    final authService = _FakeAuthService(
+      initialUser: const AuthUser(uid: 'alex-id', email: 'alex@example.com'),
+    );
+    final firestoreService = _PendingSettingsFirestoreService();
+
+    await tester.pumpWidget(BeaconApp(
+      authService: authService,
+      firestoreService: firestoreService,
+      trackingNotificationsEnabled: false,
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.pumpAndSettle();
+
+    final theme = Theme.of(tester.element(find.text('TRACKING PAUSED')));
+    expect(
+      theme.extension<BeaconThemeTokens>()?.preset,
+      BeaconThemePreset.winter,
+    );
+
+    firestoreService.completeSettings(const UserSettings(
+      themePreset: BeaconThemePreset.spring,
+    ));
+    await tester.pumpAndSettle();
+    final updatedTheme = Theme.of(tester.element(find.text('TRACKING PAUSED')));
+    expect(
+      updatedTheme.extension<BeaconThemeTokens>()?.preset,
+      BeaconThemePreset.spring,
+    );
     await authService.dispose();
   });
 
@@ -1269,6 +1412,18 @@ class _DelayedSettingsFirestoreService extends FirestoreService {
   void finishSaves() {
     if (!_saveCompleter.isCompleted) _saveCompleter.complete();
   }
+}
+
+class _PendingSettingsFirestoreService extends FirestoreService {
+  final Completer<UserSettings> _settings = Completer<UserSettings>();
+
+  @override
+  Future<UserSettings> fetchUserSettings(String uid) => _settings.future;
+
+  @override
+  Stream<List<TripEntry>> watchTrips(String uid) => Stream.value(const []);
+
+  void completeSettings(UserSettings settings) => _settings.complete(settings);
 }
 
 class _FakeAuthService implements AuthService {

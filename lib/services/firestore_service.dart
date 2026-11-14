@@ -1316,6 +1316,7 @@ class FirestoreService {
                   longitude: (point['lng'] as num).toDouble(),
                   segmentStart:
                       point['segmentStart'] as bool? ?? entry.key == 0,
+                  accuracyMeters: (point['accuracyMeters'] as num?)?.toDouble(),
                 );
               }).toList();
 
@@ -1343,8 +1344,7 @@ class FirestoreService {
         throw StateError('Firestore is not initialized.');
       }
 
-      final tripRef =
-          firestore.collection('trips').doc('${uid}_${trip.id}');
+      final tripRef = firestore.collection('trips').doc('${uid}_${trip.id}');
       final statsRef = firestore.collection('activityStats').doc(uid);
       final tripData = {
         'uid': uid,
@@ -1360,25 +1360,28 @@ class FirestoreService {
                 'lat': point.latitude,
                 'lng': point.longitude,
                 'segmentStart': point.segmentStart,
+                'accuracyMeters': point.accuracyMeters,
               },
             )
             .toList(),
         'createdAt': FieldValue.serverTimestamp(),
       };
-      await _retryUnavailable(() => firestore.runTransaction((transaction) async {
-            if ((await transaction.get(tripRef)).exists) return;
-            transaction.set(tripRef, tripData);
-            transaction.set(
-              statsRef,
-              {
-            'tripCount': FieldValue.increment(1),
-            'distanceMeters': FieldValue.increment(trip.distanceMeters),
-            'movingMinutes': FieldValue.increment(trip.totalMinutes.round()),
-            'updatedAt': FieldValue.serverTimestamp(),
-              },
-              SetOptions(merge: true),
-            );
-          }));
+      await _retryUnavailable(
+          () => firestore.runTransaction((transaction) async {
+                if ((await transaction.get(tripRef)).exists) return;
+                transaction.set(tripRef, tripData);
+                transaction.set(
+                  statsRef,
+                  {
+                    'tripCount': FieldValue.increment(1),
+                    'distanceMeters': FieldValue.increment(trip.distanceMeters),
+                    'movingMinutes':
+                        FieldValue.increment(trip.totalMinutes.round()),
+                    'updatedAt': FieldValue.serverTimestamp(),
+                  },
+                  SetOptions(merge: true),
+                );
+              }));
 
       status.value = 'Trip saved to Firestore';
       debugPrint('Saved trip for $uid');

@@ -24,7 +24,7 @@ void initializeTrackingForegroundService({bool enabled = true}) {
     ),
     foregroundTaskOptions: ForegroundTaskOptions(
       eventAction: ForegroundTaskEventAction.nothing(),
-      allowWakeLock: false,
+      allowWakeLock: true,
     ),
   );
 }

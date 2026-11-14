@@ -24,6 +24,27 @@ class HeatmapPoint {
   final LatLng point;
   final int weight;
 }
+
+class _HeatmapSample {
+  const _HeatmapSample({
+    required this.tripId,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  final String tripId;
+  final double latitude;
+  final double longitude;
+}
+
+class _HeatmapCell {
+  _HeatmapCell(this.q, this.r);
+
+  final int q;
+  final int r;
+  final tripIds = <String>{};
+}
+
 class MapPage extends StatefulWidget {
   const MapPage({
     required this.active,
@@ -41,6 +62,10 @@ class MapPage extends StatefulWidget {
   final LocationService locationService;
   final FirestoreService firestoreService;
   final TripService tripService;
+
+  static const heatmapCellRadiusMeters = 35.0;
+  static const _maximumHeatmapAccuracyMeters = 35.0;
+  static const _metersPerLatitudeDegree = 111320.0;
 
   static List<LatLng> appendTrackingPoint(
     List<LatLng> points,
@@ -61,8 +86,7 @@ class MapPage extends StatefulWidget {
   static List<List<LatLng>> buildTrackingSegments(
     Iterable<Position> positions, {
     Iterable<int> segmentStartIndices = const [],
-  }
-  ) {
+  }) {
     final segments = <List<LatLng>>[];
     final explicitSegmentStarts = segmentStartIndices.toSet();
     Position? previous;
@@ -98,22 +122,122 @@ class MapPage extends StatefulWidget {
       HeatmapWindow.month => now.subtract(const Duration(days: 30)),
       HeatmapWindow.all => DateTime.fromMillisecondsSinceEpoch(0),
     };
-    final bucketPoints = <String, LatLng>{};
-    final bucketWeights = <String, int>{};
+    final samples = <_HeatmapSample>[];
     for (final trip in trips) {
       if (trip.startedAt.isBefore(cutoff)) continue;
-      for (final point in trip.points) {
-        final latitude = (point.latitude * 1000).round() / 1000;
-        final longitude = (point.longitude * 1000).round() / 1000;
-        final key =
-            '${latitude.toStringAsFixed(3)}:${longitude.toStringAsFixed(3)}';
-        bucketPoints.putIfAbsent(key, () => LatLng(latitude, longitude));
-        bucketWeights.update(key, (weight) => weight + 1, ifAbsent: () => 1);
+
+      final segment = <TripLocation>[];
+      void addSegment() {
+        if (segment.length >= 2) {
+          samples.addAll(
+            segment.map(
+              (point) => _HeatmapSample(
+                tripId: trip.id,
+                latitude: point.latitude,
+                longitude: point.longitude,
+              ),
+            ),
+          );
+        }
+        segment.clear();
       }
+
+      for (final point in trip.points) {
+        if (point.segmentStart || segment.isEmpty) addSegment();
+        final accuracy = point.accuracyMeters;
+        if (!point.latitude.isFinite ||
+            !point.longitude.isFinite ||
+            point.latitude < -90 ||
+            point.latitude > 90 ||
+            point.longitude < -180 ||
+            point.longitude > 180 ||
+            (accuracy != null &&
+                (!accuracy.isFinite ||
+                    accuracy < 0 ||
+                    accuracy > _maximumHeatmapAccuracyMeters))) {
+          addSegment();
+          continue;
+        }
+        segment.add(point);
+      }
+      addSegment();
     }
+    if (samples.isEmpty) return const [];
+
+    final referenceLatitude =
+        samples.fold<double>(0, (sum, sample) => sum + sample.latitude) /
+            samples.length;
+    final longitudeScale = math.max(
+      math.cos(referenceLatitude * math.pi / 180).abs(),
+      0.01,
+    );
+    final cells = <String, _HeatmapCell>{};
+    for (final sample in samples) {
+      final x = sample.longitude * _metersPerLatitudeDegree * longitudeScale;
+      final y = sample.latitude * _metersPerLatitudeDegree;
+      const size = heatmapCellRadiusMeters;
+      final fractionalQ = (math.sqrt(3) / 3 * x - y / 3) / size;
+      final fractionalR = (2 / 3 * y) / size;
+      var q = fractionalQ.round();
+      var r = fractionalR.round();
+      final s = -fractionalQ - fractionalR;
+      final roundedS = s.round();
+      final qError = (q - fractionalQ).abs();
+      final rError = (r - fractionalR).abs();
+      final sError = (roundedS - s).abs();
+      if (qError > rError && qError > sError) {
+        q = -r - roundedS;
+      } else if (rError > sError) {
+        r = -q - roundedS;
+      }
+      final key = '$q:$r';
+      final cell = cells.putIfAbsent(key, () => _HeatmapCell(q, r));
+      cell.tripIds.add(sample.tripId);
+    }
+
     return [
-      for (final key in bucketPoints.keys)
-        HeatmapPoint(point: bucketPoints[key]!, weight: bucketWeights[key]!),
+      for (final cell in cells.values)
+        HeatmapPoint(
+          point: _heatmapCellCenter(
+            cell.q,
+            cell.r,
+            longitudeScale,
+          ),
+          weight: cell.tripIds.length,
+        ),
+    ];
+  }
+
+  static LatLng _heatmapCellCenter(
+    int q,
+    int r,
+    double longitudeScale,
+  ) {
+    final x = heatmapCellRadiusMeters * math.sqrt(3) * (q + r / 2);
+    final y = heatmapCellRadiusMeters * 1.5 * r;
+    return LatLng(
+      y / _metersPerLatitudeDegree,
+      x / (_metersPerLatitudeDegree * longitudeScale),
+    );
+  }
+
+  static List<LatLng> heatmapCellVertices(LatLng center) {
+    final longitudeScale = math.max(
+      math.cos(center.latitude * math.pi / 180).abs(),
+      0.01,
+    );
+    return [
+      for (var index = 0; index < 6; index++)
+        LatLng(
+          center.latitude +
+              heatmapCellRadiusMeters *
+                  math.sin(index * math.pi / 3) /
+                  _metersPerLatitudeDegree,
+          center.longitude +
+              heatmapCellRadiusMeters *
+                  math.cos(index * math.pi / 3) /
+                  (_metersPerLatitudeDegree * longitudeScale),
+        ),
     ];
   }
 
@@ -142,8 +266,7 @@ class _MapPageState extends State<MapPage> {
       final positions = widget.locationService.trackedPositions;
       _trackingTraceSegments = MapPage.buildTrackingSegments(
         positions,
-        segmentStartIndices:
-            widget.locationService.trackingSegmentStartIndices,
+        segmentStartIndices: widget.locationService.trackingSegmentStartIndices,
       );
       if (positions.isNotEmpty) _lastTracePosition = positions.last;
     }
@@ -193,8 +316,7 @@ class _MapPageState extends State<MapPage> {
       final positions = widget.locationService.trackedPositions;
       _trackingTraceSegments = MapPage.buildTrackingSegments(
         positions,
-        segmentStartIndices:
-            widget.locationService.trackingSegmentStartIndices,
+        segmentStartIndices: widget.locationService.trackingSegmentStartIndices,
       );
       _lastTracePosition = positions.isEmpty ? null : positions.last;
     } else if (!widget.trackingEnabled && oldWidget.trackingEnabled) {
@@ -289,46 +411,38 @@ class _MapPageState extends State<MapPage> {
     return markers;
   }
 
-  List<CircleMarker> _heatCircles() {
-    final points = MapPage.heatmapPoints(
-      widget.tripService.trips,
-      now: DateTime.now(),
-      window: _heatWindow,
-    );
+  List<CircleMarker> _heatGlows(List<HeatmapPoint> points) {
     return [
-      for (final point in points) ...[
+      for (final point in points)
         CircleMarker(
           point: point.point,
-          radius: 48,
-          color: Color.fromARGB(
-            math.min(24 + point.weight * 4, 64),
-            228,
-            90,
-            69,
-          ),
+          radius: MapPage.heatmapCellRadiusMeters * 1.3,
+          useRadiusInMeter: true,
+          color: _heatColor(point.weight).withAlpha(22),
         ),
-        CircleMarker(
-          point: point.point,
-          radius: 27,
-          color: Color.fromARGB(
-            math.min(40 + point.weight * 8, 112),
-            242,
-            181,
-            76,
-          ),
-        ),
-        CircleMarker(
-          point: point.point,
-          radius: 12,
-          color: Color.fromARGB(
-            math.min(64 + point.weight * 12, 164),
-            225,
-            84,
-            66,
-          ),
-        ),
-      ],
     ];
+  }
+
+  List<Polygon> _heatCells(List<HeatmapPoint> points) {
+    return [
+      for (final point in points)
+        Polygon(
+          points: MapPage.heatmapCellVertices(point.point),
+          color: _heatColor(point.weight),
+          borderColor: Colors.white.withAlpha(150),
+          borderStrokeWidth: 1,
+        ),
+    ];
+  }
+
+  Color _heatColor(int tripCount) {
+    final intensity = ((tripCount - 1) / 4).clamp(0.0, 1.0).toDouble();
+    return Color.lerp(
+      const Color(0xFF42A99D),
+      const Color(0xFFE86C52),
+      intensity,
+    )!
+        .withAlpha(68 + (intensity * 90).round());
   }
 
   Future<void> _centerOnMe() async {
@@ -438,7 +552,9 @@ class _MapPageState extends State<MapPage> {
                     ],
                   ),
                 if (_mode == _MapMode.heatmap)
-                  CircleLayer(circles: _heatCircles()),
+                  CircleLayer(circles: _heatGlows(points)),
+                if (_mode == _MapMode.heatmap)
+                  PolygonLayer(polygons: _heatCells(points)),
                 RichAttributionWidget(
                   attributions: [
                     if (_baseMap == _BaseMap.street)
@@ -624,6 +740,43 @@ class _MapHeader extends StatelessWidget {
                 textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11)),
               ),
             ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Text(
+                  '1 TRIP',
+                  style: TextStyle(
+                    color: BeaconColors.muted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF42A99D),
+                          Color(0xFFE86C52),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'REPEAT TRIPS',
+                  style: TextStyle(
+                    color: BeaconColors.muted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ],
         ],
       ),
@@ -650,7 +803,7 @@ class _MapStatus extends StatelessWidget {
         ? trackingEnabled
             ? 'LIVE · $memberCount FAMILY'
             : '$memberCount FAMILY LOCATIONS'
-        : '$pointCount MOVEMENT POINTS';
+        : '$pointCount HEAT CELLS';
     return DecoratedBox(
       decoration: BoxDecoration(
         color: BeaconColors.ink,

@@ -200,8 +200,8 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
       child: Stack(
         children: [
           Positioned.fill(
-            child: Image.network(
-              theme.backgroundImageUrl,
+            child: Image(
+              image: theme.backgroundImageProvider(),
               fit: BoxFit.cover,
               color: theme.backgroundColor.withValues(alpha: 0.12),
               colorBlendMode: BlendMode.srcOver,

@@ -33,6 +33,7 @@ dependencies:
   flutter_map: 6.2.1
   latlong2: 0.9.1
   geolocator_android: 4.6.2
+  cached_network_image: ^3.4.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

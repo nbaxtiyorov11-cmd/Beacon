@@ -102,13 +102,6 @@ class LocationService {
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 3,
         intervalDuration: const Duration(seconds: 2),
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'Beacon route recording',
-          notificationText: 'Keeping GPS active while your screen is off.',
-          notificationChannelName: 'Beacon background location',
-          enableWakeLock: true,
-          setOngoing: true,
-        ),
       );
     }
     return const LocationSettings(

@@ -108,8 +108,8 @@ class _SettingsPageState extends State<SettingsPage> {
     return Stack(
       children: [
         Positioned.fill(
-          child: Image.network(
-            theme.backgroundImageUrl,
+          child: Image(
+            image: theme.backgroundImageProvider(),
             fit: BoxFit.cover,
             color: theme.backgroundColor.withValues(alpha: 0.2),
             colorBlendMode: BlendMode.srcOver,
@@ -373,8 +373,10 @@ class _SettingsPageState extends State<SettingsPage> {
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
-                                        Image.network(
-                                          theme.backgroundImageUrl,
+                                        Image(
+                                          image: theme.backgroundImageProvider(
+                                            maxWidth: 360,
+                                          ),
                                           fit: BoxFit.cover,
                                           color: Colors.black.withAlpha(35),
                                           colorBlendMode: BlendMode.darken,

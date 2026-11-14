@@ -162,8 +162,8 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Stack(
         children: [
           Positioned.fill(
-            child: Image.network(
-              theme.backgroundImageUrl,
+            child: Image(
+              image: theme.backgroundImageProvider(),
               fit: BoxFit.cover,
               color: theme.backgroundColor.withValues(alpha: 0.14),
               colorBlendMode: BlendMode.srcOver,

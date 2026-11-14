@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/auth_service.dart';
 import '../pages/activity_page.dart';
@@ -113,17 +114,50 @@ class _BeaconShellState extends State<BeaconShell> {
   }
 
   Future<void> _loadUserData() async {
-    final settings =
-        await widget.firestoreService.fetchUserSettings(widget.user.uid);
+    final cachedThemeFuture = _loadCachedThemePreset();
+    final settingsFuture =
+        widget.firestoreService.fetchUserSettings(widget.user.uid);
+    final cachedTheme = await cachedThemeFuture;
+    if (!mounted) return;
+    if (cachedTheme != null && cachedTheme != widget.themePreset) {
+      widget.onThemeChanged(cachedTheme);
+    }
+
+    final settings = await settingsFuture;
     if (!mounted) return;
     setState(() {
       _userSettings = settings;
       _trackingEnabled = widget.locationService.trackingEnabled;
     });
-    if (settings.themePreset != widget.themePreset) {
+    if (settings.themePreset != (cachedTheme ?? widget.themePreset)) {
       widget.onThemeChanged(settings.themePreset);
     }
+    unawaited(_cacheThemePreset(settings.themePreset));
     unawaited(_configureMessaging(settings.notifications));
+  }
+
+  String get _themePreferenceKey => 'beacon.themePreset.${widget.user.uid}';
+
+  Future<BeaconThemePreset?> _loadCachedThemePreset() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final savedName = preferences.getString(_themePreferenceKey);
+      for (final preset in BeaconThemePreset.values) {
+        if (preset.name == savedName) return preset;
+      }
+    } catch (error) {
+      debugPrint('Could not load cached theme preference: $error');
+    }
+    return null;
+  }
+
+  Future<void> _cacheThemePreset(BeaconThemePreset preset) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(_themePreferenceKey, preset.name);
+    } catch (error) {
+      debugPrint('Could not cache theme preference: $error');
+    }
   }
 
   void _watchTrips() {
@@ -724,6 +758,11 @@ class _BeaconShellState extends State<BeaconShell> {
           onUserSettingsChanged: (settings) async {
             final previous = _userSettings;
             _userSettings = settings;
+            if (previous.themePreset != settings.themePreset) {
+              widget.onThemeChanged(settings.themePreset);
+              unawaited(_cacheThemePreset(settings.themePreset));
+            }
+            if (mounted) setState(() {});
             await widget.firestoreService
                 .saveUserSettings(widget.user.uid, settings);
             if (previous.approximateLocation != settings.approximateLocation &&
@@ -736,10 +775,6 @@ class _BeaconShellState extends State<BeaconShell> {
             if (previous.notifications != settings.notifications) {
               unawaited(_configureMessaging(settings.notifications));
             }
-            if (previous.themePreset != settings.themePreset) {
-              widget.onThemeChanged(settings.themePreset);
-            }
-            if (mounted) setState(() {});
           },
           onLogout: _signOutFromSettings,
         ),
@@ -882,8 +917,8 @@ class _BeaconShellState extends State<BeaconShell> {
       child: Stack(
         children: [
           Positioned.fill(
-            child: Image.network(
-              theme.backgroundImageUrl,
+            child: Image(
+              image: theme.backgroundImageProvider(),
               fit: BoxFit.cover,
               color: theme.backgroundColor.withValues(alpha: 0.12),
               colorBlendMode: BlendMode.srcOver,
