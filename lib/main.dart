@@ -15,6 +15,7 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  // Hellloooo nodir dabba
   runApp(BeaconApp());
 }
 

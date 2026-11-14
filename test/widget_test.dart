@@ -291,7 +291,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Your profile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Settings'));
+    await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView).last, const Offset(0, -600));
     await tester.pumpAndSettle();
@@ -439,9 +439,9 @@ void main() {
     expect(find.text('Delete account'), findsNothing);
     expect(find.text('alex@example.com'), findsWidgets);
 
-    await tester.ensureVisible(find.text('Edit name'));
+    await tester.ensureVisible(find.text('Edit profile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Edit name'));
+    await tester.tap(find.text('Edit profile'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Alex Beacon');
     await tester.tap(find.text('Save'));
